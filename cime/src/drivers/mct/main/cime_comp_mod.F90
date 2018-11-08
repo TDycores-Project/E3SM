@@ -667,9 +667,21 @@ contains
     logical :: verbose_taskmap_output
     character(len=8) :: c_cpl_inst    ! coupler instance number
     character(len=8) :: c_cpl_npes    ! number of pes in coupler
+#ifdef USE_MT_MPI
+    integer :: reqd_thread_support = MPI_THREAD_MULTIPLE
+    integer :: prov_thread_support = MPI_THREAD_SINGLE
+#endif
 
+#ifdef USE_MT_MPI
+    call mpi_init_thread(reqd_thread_support, prov_thread_support, ierr)
+    call shr_mpi_chkerr(ierr,subname//' mpi_init_thread')
+    if (prov_thread_support < reqd_thread_support) then
+      call shr_sys_abort(subname // " Provided thread level support is less than required")
+    end if
+#else
     call mpi_init(ierr)
     call shr_mpi_chkerr(ierr,subname//' mpi_init')
+#endif
     call mpi_comm_dup(MPI_COMM_WORLD, global_comm, ierr)
     call shr_mpi_chkerr(ierr,subname//' mpi_comm_dup')
 
