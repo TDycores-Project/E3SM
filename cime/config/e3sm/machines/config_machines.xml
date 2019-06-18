@@ -365,6 +365,7 @@
     <environment_variables compiler="intel">
       <env name="FORT_BUFFERED">yes</env>
       <env name="MPICH_MEMORY_REPORT">1</env>
+      <env name="ADIOS_DIR">/project/projectdirs/acme/3rdparty/adios/1.13.1/icc-18.0.1</env>
     </environment_variables>
     <environment_variables compiler="intel19">
       <env name="MPICH_MEMORY_REPORT">1</env>
@@ -739,6 +740,9 @@
     </environment_variables>
     <environment_variables SMP_PRESENT="TRUE">
       <env name="OMP_STACKSIZE">64M</env>
+    </environment_variables>
+    <environment_variables compiler="gnu">
+      <env name="ADIOS_DIR">/soft/apps/packages/climate/adios/1.13.1/gcc-6.2.0</env>
     </environment_variables>
   </machine>
 
@@ -1527,6 +1531,12 @@
     </environment_variables>
     <environment_variables DEBUG="TRUE">
       <env name="labeling">-e PMI_LABEL_ERROUT=1</env>
+    </environment_variables>
+    <environment_variables compiler="gnu">
+      <env name="ADIOS_DIR">TBD</env>
+    </environment_variables>
+    <environment_variables compiler="intel">
+      <env name="ADIOS_DIR">TBD</env>
     </environment_variables>
   </machine>
 
@@ -3070,6 +3080,15 @@
     <environment_variables mpilib="!mpi-serial">
       <env name="HDF5_PATH">$ENV{OLCF_HDF5_ROOT}</env>
       <env name="PNETCDF_PATH">$ENV{OLCF_PARALLEL_NETCDF_ROOT}</env>
+    </environment_variables>
+    <environment_variables compiler="gnu">
+      <env name="ADIOS_DIR">/gpfs/alpine/cli115/proj-shared/3rdparty/adios/1.13.1/gcc-6.4.0</env>
+    </environment_variables>
+    <environment_variables compiler="ibm">
+      <env name="ADIOS_DIR">/gpfs/alpine/cli115/proj-shared/3rdparty/adios/1.13.1/xl-16.1.1</env>
+    </environment_variables>
+    <environment_variables compiler="pgi">
+      <env name="ADIOS_DIR">/gpfs/alpine/cli115/proj-shared/3rdparty/adios/1.13.1/pgi-19.4</env>
     </environment_variables>
   </machine>
 
