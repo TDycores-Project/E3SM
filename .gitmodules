@@ -27,3 +27,6 @@
 	path = externals/scorpio_classic
 	url = git@github.com:E3SM-Project/scorpio.git
 	branch = scorpio_classic
+[submodule "tdycore"]
+	path = components/clm/src/external_models/tdycore
+	url = git@github.com:TDycores-Project/TDycore
