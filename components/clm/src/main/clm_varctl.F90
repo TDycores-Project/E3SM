@@ -318,6 +318,11 @@ module clm_varctl
   logical, public :: use_var_soil_thick  = .false.
 
   !----------------------------------------------------------
+  ! TDycore switches
+  !----------------------------------------------------------
+  logical, public :: use_tdycore = .false.
+
+  !----------------------------------------------------------
   ! VSFM switches
   !----------------------------------------------------------
   logical          , public :: use_vsfm                    = .false.

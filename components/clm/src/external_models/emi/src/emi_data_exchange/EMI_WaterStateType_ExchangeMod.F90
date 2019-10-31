@@ -292,7 +292,8 @@ contains
     associate(& 
          h2osoi_liq => col_ws%h2osoi_liq , &
          h2osoi_ice => col_ws%h2osoi_ice , &
-         soilp      => col_ws%soilp        &
+         soilp      => col_ws%soilp      , &
+         h2osoi_vol => col_ws%h2osoi_vol   &
          )
 
     count = 0
@@ -336,6 +337,24 @@ contains
                 c = filter(fc)
                 do j = 1, nlevgrnd
                    soilp(c,j) = cur_data%data_real_2d(c,j)
+                enddo
+             enddo
+             cur_data%is_set = .true.
+
+          case (E2L_STATE_H2OSOI_VOL_NLEVSOI)
+             do fc = 1, num_filter
+                c = filter(fc)
+                do j = 1, nlevsoi
+                   h2osoi_vol(c,j) = cur_data%data_real_2d(c,j)
+                enddo
+             enddo
+             cur_data%is_set = .true.
+
+          case (E2L_STATE_H2OSOI_VOL_NLEVGRND)
+             do fc = 1, num_filter
+                c = filter(fc)
+                do j = 1, nlevgrnd
+                   h2osoi_vol(c,j) = cur_data%data_real_2d(c,j)
                 enddo
              enddo
              cur_data%is_set = .true.

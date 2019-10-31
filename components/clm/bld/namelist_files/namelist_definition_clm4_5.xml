@@ -1713,6 +1713,15 @@ Specifies the method for decomposing CLM grids across processors.
 </entry>
 
 <!-- ========================================================================================  -->
+<!-- Namelist options related to Terrestrial Dynamical Core (TDycore)                          -->
+<!-- ========================================================================================  -->
+
+<entry id="use_tdycore" type="logical" category="default_settings"
+        group="clm_inparm" valid_values="">
+Runtime flag to turn on/off TDycore.
+</entry>
+
+<!-- ========================================================================================  -->
 <!-- Namelist options related to Variably Saturated Flow Model (VSFM)                          -->
 <!-- ========================================================================================  -->
 

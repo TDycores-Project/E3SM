@@ -980,6 +980,7 @@ contains
     use clm_varctl               , only : use_vsfm, vsfm_use_dynamic_linesearch
     use clm_varctl               , only : vsfm_include_seepage_bc, vsfm_satfunc_type
     use clm_varctl               , only : vsfm_lateral_model_type
+    use clm_varctl               , only : use_tdycore
     use clm_varctl               , only : use_petsc_thermal_model
     use clm_varctl               , only : lateral_connectivity
     use clm_varctl               , only : finidat
@@ -992,6 +993,7 @@ contains
     use mpp_bounds               , only : mpp_bounds_init_proc_bounds
     use mpp_bounds               , only : mpp_bounds_init_clump
     use ExternalModelInterfaceMod, only : EMI_Init_EM
+    use ExternalModelConstants   , only : EM_ID_TDYCORE
     use ExternalModelConstants   , only : EM_ID_VSFM
     use ExternalModelConstants   , only : EM_ID_PTM
 
@@ -1036,6 +1038,10 @@ contains
 
     call mpp_bounds_init_clump(get_proc_clumps())
 
+    if (use_tdycore) then
+       call EMI_Init_EM(EM_ID_TDYCORE)
+    endif
+
     if (use_vsfm) then
        call EMI_Init_EM(EM_ID_VSFM)
     endif
@@ -1061,6 +1067,7 @@ contains
     ! !USES:
     use spmdMod    , only : mpicom
     use clm_varctl , only : use_vsfm
+    use clm_varctl , only : use_tdycore
     use clm_varctl , only : lateral_connectivity
     use clm_varctl , only : use_petsc_thermal_model
 #ifdef USE_PETSC_LIB
@@ -1076,7 +1083,8 @@ contains
 
     if ( (.not. use_vsfm)               .and. &
          (.not. lateral_connectivity)   .and. &
-         (.not. use_petsc_thermal_model) ) return
+         (.not. use_petsc_thermal_model).and. &
+         (.not. use_tdycore) ) return
 
 #ifdef USE_PETSC_LIB
     ! Initialize PETSc

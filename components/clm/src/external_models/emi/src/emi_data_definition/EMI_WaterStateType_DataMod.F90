@@ -329,6 +329,33 @@ contains
        dim2_beg_name  =  dimname_one
        dim2_end_name  =  dimname_nlevgrnd
        data_found   =  .true.
+
+    case(E2L_STATE_H2OSOI_VOL_NLEVSOI)
+       id_val         =  E2L_STATE_H2OSOI_VOL_NLEVSOI
+       name_val       =  'Vol. soil liq water'
+       long_name_val  =  'Vol. soil liq water: EM to ELM nlevsoi'
+       units_val      =  '[m3/m3]'
+       is_real_type   =  .true.
+       ndim           =  2
+       dim1_beg_name  =  dimname_begc
+       dim1_end_name  =  dimname_endc
+       dim2_beg_name  =  dimname_one
+       dim2_end_name  =  dimname_nlevsoi
+       data_found   =  .true.
+
+    case(E2L_STATE_H2OSOI_VOL_NLEVGRND)
+       id_val         =  E2L_STATE_H2OSOI_VOL_NLEVGRND
+       name_val       =  'Vol. soil liq water'
+       long_name_val  =  'Vol. soil liq water: EM to ELM nlevgrnd'
+       units_val      =  '[m3/m3]'
+       is_real_type   =  .true.
+       ndim           =  2
+       dim1_beg_name  =  dimname_begc
+       dim1_end_name  =  dimname_endc
+       dim2_beg_name  =  dimname_one
+       dim2_end_name  =  dimname_nlevgrnd
+       data_found   =  .true.
+
     end select
     
   end subroutine EMI_WaterStateType_DataInfoByID

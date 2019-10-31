@@ -28,6 +28,9 @@ module ExternalModelConstants
   integer, parameter, public :: EM_STUB_SOIL_HYDRO_STAGE                         = 501
   integer, parameter, public :: EM_STUB_SOIL_THERMAL_STAGE                       = 502
 
+  integer, public, parameter :: EM_ID_TDYCORE                                    = 600
+  integer, parameter, public :: EM_TDYCORE_SOIL_HYDRO_STAGE                      = 601
+
   ! ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
   ! IDs for variable sent from ALM to External Model
   ! ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
