@@ -248,6 +248,59 @@ contains
        dim2_beg_name  =  dimname_one
        dim2_end_name  =  dimname_nlevgrnd
        data_found   =  .true.
+
+    case(E2L_PARAMETER_WATSATC)
+       id_val         =  E2L_PARAMETER_WATSATC
+       name_val       =  'Soil porosity'
+       long_name_val  =  'Soil porosity: EM to ELM'
+       units_val      =  '[m^3/m^3]'
+       is_real_type   =  .true.
+       ndim           =  2
+       dim1_beg_name  =  dimname_begc
+       dim1_end_name  =  dimname_endc
+       dim2_beg_name  =  dimname_one
+       dim2_end_name  =  dimname_nlevgrnd
+       data_found   =  .true.
+
+    case(E2L_PARAMETER_HKSATC)
+       id_val         =  E2L_PARAMETER_HKSATC
+       name_val       =  'Soil hydraulic conductivity'
+       long_name_val  =  'Soil hydraulic conductivity: EM to ELM'
+       units_val      =  '[mm/s]'
+       is_real_type   =  .true.
+       ndim           =  2
+       dim1_beg_name  =  dimname_begc
+       dim1_end_name  =  dimname_endc
+       dim2_beg_name  =  dimname_one
+       dim2_end_name  =  dimname_nlevgrnd
+       data_found   =  .true.
+
+    case(E2L_PARAMETER_BSWC)
+       id_val         =  E2L_PARAMETER_BSWC
+       name_val       =  'Clapp and Hornberger parameter'
+       long_name_val  =  'Clapp and Hornberger parameter: EM to ELM'
+       units_val      =  '[-]'
+       is_real_type   =  .true.
+       ndim           =  2
+       dim1_beg_name  =  dimname_begc
+       dim1_end_name  =  dimname_endc
+       dim2_beg_name  =  dimname_one
+       dim2_end_name  =  dimname_nlevgrnd
+       data_found   =  .true.
+
+    case(E2L_PARAMETER_SUCSATC)
+       id_val         =  E2L_PARAMETER_SUCSATC
+       name_val       =  'Minimum soil sucsatc'
+       long_name_val  =  'Minimum soil sucsatc: EM to ELM'
+       units_val      =  '[mm]'
+       is_real_type   =  .true.
+       ndim           =  2
+       dim1_beg_name  =  dimname_begc
+       dim1_end_name  =  dimname_endc
+       dim2_beg_name  =  dimname_one
+       dim2_end_name  =  dimname_nlevgrnd
+       data_found   =  .true.
+
     end select
     
   end subroutine EMI_SoilStateType_DataInfoByID

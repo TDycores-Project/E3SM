@@ -10,8 +10,9 @@ module ExternalModelInterfaceMod
   use decompMod                             , only : bounds_type, get_proc_clumps
   use abortutils                            , only : endrun
   use clm_varctl                            , only : iulog
-  use EMI_DataMod         , only : emi_data_list, emi_data
-  use EMI_DataDimensionMod , only : emi_data_dimension_list_type
+  use EMI_DataMod                           , only : emi_data_list, emi_data
+  use EMI_DataDimensionMod                  , only : emi_data_dimension_list_type
+  use ExternalModelTDycore                  , only : em_tdycore_type
 #ifdef USE_PETSC_LIB
   use ExternalModelVSFMMod                  , only : em_vsfm_type
   use ExternalModelPTMMod                   , only : em_ptm_type
@@ -48,12 +49,14 @@ module ExternalModelInterfaceMod
   integer :: index_em_fates
   integer :: index_em_pflotran
   integer :: index_em_stub
+  integer :: index_em_tdycore
   integer :: index_em_vsfm
   integer :: index_em_ptm
 
   class(emi_data_list)               , pointer :: l2e_driver_list(:)
   class(emi_data_list)               , pointer :: e2l_driver_list(:)
   class(emi_data_dimension_list_type), pointer :: emid_dim_list
+  class(em_tdycore_type)             , pointer :: em_tdycore
 #ifdef USE_PETSC_LIB
   class(em_vsfm_type)                , pointer :: em_vsfm(:)
   class(em_ptm_type)                 , pointer :: em_ptm(:)
@@ -82,11 +85,13 @@ contains
 #endif
     use clm_varctl, only : use_petsc_thermal_model
     use clm_varctl, only : use_em_stub
+    use clm_varctl, only : use_tdycore
     !
     implicit none
     !
     ! !LOCAL VARIABLES:
     integer :: iem
+    character(len=32) :: subname = 'EMI_Determine_Active_EMs'  ! subroutine name
 
     ! Initializes
     num_em               = 0
@@ -94,6 +99,7 @@ contains
     index_em_fates       = 0
     index_em_pflotran    = 0
     index_em_stub        = 0
+    index_em_tdycore     = 0
     index_em_vsfm        = 0
 
     nclumps = get_proc_clumps()
@@ -145,6 +151,16 @@ contains
        allocate(em_stub(nclumps))
     endif
 
+    if (use_tdycore) then
+       if (nclumps>1) then
+          call endrun(msg=subname //':: ERROR: Only supports nclumps = 1'//&
+               errMsg(__FILE__, __LINE__))
+       endif
+       num_em            = num_em + 1
+       index_em_tdycore  = num_em
+       allocate(em_tdycore)
+    endif
+
     if ( masterproc ) then
        write(iulog,*) 'Number of External Models = ', num_em
        write(iulog,*) '  Is BeTR present?     ',(index_em_betr     >0)
@@ -153,6 +169,7 @@ contains
        write(iulog,*) '  Is PTM present?      ',(index_em_ptm      >0)
        write(iulog,*) '  Is Stub EM present?  ',(index_em_stub     >0)
        write(iulog,*) '  Is VSFM present?     ',(index_em_vsfm     >0)
+       write(iulog,*) '  Is TDycore present?  ',(index_em_tdycore  >0)
     endif
 
     if (num_em > 1) then
@@ -186,6 +203,7 @@ contains
     use ExternalModelConstants, only : EM_ID_VSFM
     use ExternalModelConstants, only : EM_ID_PTM
     use ExternalModelConstants, only : EM_ID_STUB
+    use ExternalModelConstants, only : EM_ID_TDYCORE
 #ifndef FATES_VIA_EMI
     use clm_instMod           , only : soilstate_vars
     use clm_instMod           , only : soilhydrology_vars
@@ -583,11 +601,180 @@ contains
 
        enddo
 
+    case (EM_ID_TDYCORE)
+       call EMI_Init_TDycore()
+
     case default
        call endrun('Unknown External Model')
     end select
 
   end subroutine EMI_Init_EM
+
+  !-----------------------------------------------------------------------
+  subroutine EMI_Init_TDycore()
+    !
+    use clm_instMod           , only : soilstate_vars
+    use clm_instMod           , only : soilhydrology_vars
+    use clm_instMod           , only : waterflux_vars
+    use clm_instMod           , only : waterstate_vars
+    use decompMod             , only : get_clump_bounds
+    use ColumnType            , only : col_pp
+    use LandunitType          , only : lun_pp
+    use landunit_varcon       , only : istsoil, istcrop,istice
+    use column_varcon         , only : icol_road_perv
+    use ExternalModelConstants, only : EM_INITIALIZATION_STAGE
+    !
+    implicit none
+    !
+    ! !LOCAL VARIABLES:
+    class(emi_data_list), pointer :: l2e_init_list(:)
+    class(emi_data_list), pointer :: e2l_init_list(:)
+    integer                       :: ii, c, l
+    integer                       :: num_filter_col
+    integer                       :: num_filter_lun
+    integer, pointer              :: filter_col(:)
+    integer, pointer              :: filter_lun(:)
+    integer                       :: num_e2l_filter_col
+    integer, pointer              :: e2l_filter_col(:)
+    integer, pointer              :: tmp_col(:)
+    type(bounds_type)             :: bounds_clump
+    integer                       :: iem
+    integer                       :: clump_rank
+    integer                       :: ierr
+    integer                       :: unitn
+    integer                       :: em_stage
+    character(len=32)             :: subname = 'EMI_Init_TDycore'
+
+    em_stage = EM_INITIALIZATION_STAGE
+
+    allocate(l2e_init_list(nclumps))
+    allocate(e2l_init_list(nclumps))
+    
+    if (nclumps>1) then
+       call endrun(msg=subname //':: ERROR: Only supports nclumps = 1'//&
+            errMsg(__FILE__, __LINE__))
+    endif
+
+    clump_rank = 1
+    iem = (index_em_tdycore-1)*nclumps + clump_rank
+
+    call get_clump_bounds(clump_rank, bounds_clump)
+
+    ! Fill the data list:
+    !  - Data need during the initialization
+    call l2e_init_list(clump_rank)%Init()
+    call e2l_init_list(clump_rank)%Init()
+
+    select type(em_tdycore)
+    class is(em_tdycore_type)
+       call em_tdycore%PreInit(bounds_clump)
+    class default
+    end select
+
+    call em_tdycore%Populate_L2E_Init_List(l2e_init_list(clump_rank))
+    call em_tdycore%Populate_E2L_Init_List(e2l_init_list(clump_rank))
+
+    !  - Data need during timestepping
+    call em_tdycore%Populate_L2E_List(l2e_driver_list(iem))
+    call em_tdycore%Populate_E2L_List(e2l_driver_list(iem))
+
+    ! Allocate memory for data
+    call EMI_Setup_Data_List(l2e_init_list(clump_rank), bounds_clump)
+    call EMI_Setup_Data_List(e2l_init_list(clump_rank), bounds_clump)
+    call EMI_Setup_Data_List(l2e_driver_list(iem)     , bounds_clump)
+    call EMI_Setup_Data_List(e2l_driver_list(iem)     , bounds_clump)
+
+    ! GB_FIX_ME: Create a temporary filter
+    num_filter_col = bounds_clump%endc - bounds_clump%begc + 1
+    num_filter_lun = bounds_clump%endl - bounds_clump%begl + 1
+
+    allocate(filter_col(num_filter_col))
+    allocate(filter_lun(num_filter_lun))
+
+    do ii = 1, num_filter_col
+       filter_col(ii) = bounds_clump%begc + ii - 1
+    enddo
+
+    do ii = 1, num_filter_lun
+       filter_lun(ii) = bounds_clump%begl + ii - 1
+    enddo
+
+    ! Reset values in the data list
+    call EMID_Reset_Data_for_EM(l2e_init_list(clump_rank), em_stage)
+    call EMID_Reset_Data_for_EM(e2l_init_list(clump_rank), em_stage)
+
+    ! Pack all ALM data needed by the external model
+    call EMI_Pack_WaterStateType_at_Column_Level_for_EM(l2e_init_list(clump_rank), em_stage, &
+         num_filter_col, filter_col, waterstate_vars)
+    call EMI_Pack_WaterFluxType_at_Column_Level_for_EM(l2e_init_list(clump_rank), em_stage, &
+         num_filter_col, filter_col, waterflux_vars)
+    call EMI_Pack_SoilHydrologyType_at_Column_Level_for_EM(l2e_init_list(clump_rank), em_stage, &
+         num_filter_col, filter_col, soilhydrology_vars)
+    call EMI_Pack_SoilStateType_at_Column_Level_for_EM(l2e_init_list(clump_rank), em_stage, &
+         num_filter_col, filter_col, soilstate_vars)
+    call EMI_Pack_ColumnType_for_EM(l2e_init_list(clump_rank), em_stage, &
+         num_filter_col, filter_col)
+    call EMI_Pack_Landunit_for_EM(l2e_init_list(clump_rank), em_stage, &
+         num_filter_lun, filter_lun)
+
+    ! Ensure all data needed by external model is packed
+    call EMID_Verify_All_Data_Is_Set(l2e_init_list(clump_rank), em_stage)
+
+    ! Initialize the external model
+    call em_tdycore%Init(l2e_init_list(clump_rank), e2l_init_list(clump_rank), &
+         iam, bounds_clump)
+
+    ! Build a column level filter on which TDycore is active.
+    ! This new filter would be used during the initialization to
+    ! unpack data from the EM into ALM's data structure.
+    allocate(tmp_col(bounds_clump%begc:bounds_clump%endc))
+
+    tmp_col(bounds_clump%begc:bounds_clump%endc) = 0
+
+    num_e2l_filter_col = 0
+    do c = bounds_clump%begc,bounds_clump%endc
+       if (col_pp%active(c)) then
+          l = col_pp%landunit(c)
+          if (lun_pp%itype(l) == istsoil .or. col_pp%itype(c) == icol_road_perv .or. &
+               lun_pp%itype(l) == istcrop) then
+             num_e2l_filter_col = num_e2l_filter_col + 1
+             tmp_col(c) = 1
+          end if
+       end if
+    end do
+
+    allocate(e2l_filter_col(num_e2l_filter_col))
+
+    num_e2l_filter_col = 0
+    do c = bounds_clump%begc,bounds_clump%endc
+       if (tmp_col(c) == 1) then
+          num_e2l_filter_col = num_e2l_filter_col + 1
+          e2l_filter_col(num_e2l_filter_col) = c
+       endif
+    enddo
+
+    ! Unpack all data sent from the external model
+    call EMI_Unpack_SoilStateType_at_Column_Level_from_EM(e2l_init_list(clump_rank), em_stage, &
+         num_e2l_filter_col, e2l_filter_col, soilstate_vars)
+    call EMI_Unpack_WaterStateType_at_Column_Level_from_EM(e2l_init_list(clump_rank), em_stage, &
+         num_e2l_filter_col, e2l_filter_col, waterstate_vars)
+    call EMI_Unpack_WaterFluxType_at_Column_Level_from_EM(e2l_init_list(clump_rank), em_stage, &
+         num_e2l_filter_col, e2l_filter_col, waterflux_vars)
+    call EMI_Unpack_SoilHydrologyType_at_Column_Level_from_EM(e2l_init_list(clump_rank), em_stage, &
+         num_e2l_filter_col, e2l_filter_col, soilhydrology_vars)
+
+    ! Ensure all data sent by external model is unpacked
+    call EMID_Verify_All_Data_Is_Set(e2l_init_list(clump_rank), em_stage)
+
+    ! Clean up memory
+    call l2e_init_list(clump_rank)%Destroy()
+    call e2l_init_list(clump_rank)%Destroy()
+
+    deallocate(e2l_filter_col)
+    deallocate(tmp_col)
+
+  end subroutine EMI_Init_TDycore
+
 
   !-----------------------------------------------------------------------
   subroutine EMI_Setup_Data_List(data_list, bounds_clump)
@@ -1121,7 +1308,7 @@ contains
           if (cur_data%em_stage_ids(istage) == em_stage) then
              if (.not. cur_data%is_set) then
                 write(iulog,*)'EMID%id   = ', cur_data%id
-                write(iulog,*)'EMID%name = ', trim(cur_data%name)
+                write(iulog,*)'EMID%long_name = ', trim(cur_data%long_name)
                 call endrun(msg='EMID is not set.')
              endif
              if (present(print_data)) then
