@@ -41,3 +41,6 @@
 [submodule "externals/cub"]
 	path = externals/cub
 	url = git@github.com:NVlabs/cub.git
+[submodule "tdycore"]
+	path = components/clm/src/external_models/tdycore
+	url = git@github.com:TDycores-Project/TDycore
