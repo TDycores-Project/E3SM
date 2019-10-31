@@ -329,6 +329,51 @@ contains
        dim1_beg_name  =  dimname_begc
        dim1_end_name  =  dimname_endc
        data_found   =  .true.
+
+    case(E2L_FLUX_DRAIN_PERCHED)
+       id_val         =  E2L_FLUX_DRAIN_PERCHED
+       name_val       =  'Driange from perched layer'
+       long_name_val  =  'Driange from perched layer: EM to ELM'
+       units_val      =  '[mm/s]'
+       is_real_type   =  .true.
+       ndim           =  1
+       dim1_beg_name  =  dimname_begc
+       dim1_end_name  =  dimname_endc
+       data_found   =  .true.
+
+    case(E2L_FLUX_DRAIN)
+       id_val         =  E2L_FLUX_SNOW_LYR_DISAPPERANCE_MASS_FLUX
+       name_val       =  'Driange'
+       long_name_val  =  'Driange: EM to ELM'
+       units_val      =  '[mm/s]'
+       is_real_type   =  .true.
+       ndim           =  1
+       dim1_beg_name  =  dimname_begc
+       dim1_end_name  =  dimname_endc
+       data_found   =  .true.
+
+    case(E2L_FLUX_QRGWL)
+       id_val         =  E2L_FLUX_QRGWL
+       name_val       =  'Surface runoff at glaciers'
+       long_name_val  =  'Surface runoff at glaciers: EM to ELM'
+       units_val      =  '[mm/s]'
+       is_real_type   =  .true.
+       ndim           =  1
+       dim1_beg_name  =  dimname_begc
+       dim1_end_name  =  dimname_endc
+       data_found   =  .true.
+
+    case(E2L_FLUX_RSUB_SAT)
+       id_val         =  E2L_FLUX_RSUB_SAT
+       name_val       =  'Saturation excess drainage'
+       long_name_val  =  'Saturation excess drainage: EM to ELM'
+       units_val      =  '[mm/s]'
+       is_real_type   =  .true.
+       ndim           =  1
+       dim1_beg_name  =  dimname_begc
+       dim1_end_name  =  dimname_endc
+       data_found   =  .true.
+
     end select
     
   end subroutine EMI_WaterFluxType_DataInfoByID

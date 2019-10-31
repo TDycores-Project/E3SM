@@ -26,5 +26,7 @@ module EMI_WaterStateType_Constants
   integer, parameter, public :: E2L_STATE_H2OSOI_LIQ                     = 0120
   integer, parameter, public :: E2L_STATE_H2OSOI_ICE                     = 0121
   integer, parameter, public :: E2L_STATE_VSFM_PROGNOSTIC_SOILP          = 0122
+  integer, parameter, public :: E2L_STATE_H2OSOI_VOL_NLEVSOI             = 0123
+  integer, parameter, public :: E2L_STATE_H2OSOI_VOL_NLEVGRND            = 0124
 
 end module EMI_WaterStateType_Constants
