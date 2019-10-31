@@ -287,7 +287,7 @@ contains
 
     if (present(id))        call this%SetID(id)
     if (present(name))      call this%SetName(name)
-    if (present(long_name)) call this%SetLongName(name)
+    if (present(long_name)) call this%SetLongName(long_name)
     if (present(units))     call this%SetUnits(units)
     if (present(avgflag))   call this%SetAvgFlag(units)
 

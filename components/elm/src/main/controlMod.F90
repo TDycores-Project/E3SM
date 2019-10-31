@@ -278,6 +278,8 @@ contains
 
     namelist /elm_inparm/ use_var_soil_thick
 
+    namelist /elm_inparm / use_tdycore
+
     namelist /elm_inparm / &
          use_vsfm, vsfm_satfunc_type, vsfm_use_dynamic_linesearch, &
          vsfm_lateral_model_type, vsfm_include_seepage_bc
@@ -831,6 +833,10 @@ contains
 
     ! plant hydraulics
     call mpi_bcast (use_hydrstress, 1, MPI_LOGICAL, 0, mpicom, ier)
+
+    ! TDycore variable
+
+    call mpi_bcast (use_tdycore, 1, MPI_LOGICAL, 0, mpicom, ier)
 
     ! VSFM variable
 
