@@ -43,3 +43,6 @@
 	url = git@github.com:NVlabs/cub.git
 [submodule "Submod"]
 	branch = rljacob/e3smconfig/elm-name
+[submodule "tdycore"]
+	path = components/elm/src/external_models/tdycore
+	url = git@github.com:TDycores-Project/TDycore
