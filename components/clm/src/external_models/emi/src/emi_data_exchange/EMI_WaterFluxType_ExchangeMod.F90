@@ -310,7 +310,11 @@ contains
     integer                             :: count
 
     associate(& 
-         mflx_snowlyr => col_wf%mflx_snowlyr   &
+         mflx_snowlyr       => col_wf%mflx_snowlyr       , &
+         qflx_drain_perched => col_wf%qflx_drain_perched , &
+         qflx_drain         => col_wf%qflx_drain         , &
+         qflx_qrgwl         => col_wf%qflx_qrgwl         , &
+         qflx_rsub_sat      => col_wf%qflx_rsub_sat        &
          )
 
     count = 0
@@ -335,6 +339,34 @@ contains
              do fc = 1, num_filter
                 c = filter(fc)
                 mflx_snowlyr(c) = cur_data%data_real_1d(c)
+             enddo
+             cur_data%is_set = .true.
+
+          case (E2L_FLUX_DRAIN_PERCHED)
+             do fc = 1, num_filter
+                c = filter(fc)
+                qflx_drain_perched(c) = cur_data%data_real_1d(c)
+             enddo
+             cur_data%is_set = .true.
+
+          case (E2L_FLUX_DRAIN)
+             do fc = 1, num_filter
+                c = filter(fc)
+                qflx_drain(c) = cur_data%data_real_1d(c)
+             enddo
+             cur_data%is_set = .true.
+
+          case (E2L_FLUX_QRGWL)
+             do fc = 1, num_filter
+                c = filter(fc)
+                qflx_qrgwl(c) = cur_data%data_real_1d(c)
+             enddo
+             cur_data%is_set = .true.
+
+          case (E2L_FLUX_RSUB_SAT)
+             do fc = 1, num_filter
+                c = filter(fc)
+                qflx_rsub_sat(c) = cur_data%data_real_1d(c)
              enddo
              cur_data%is_set = .true.
 

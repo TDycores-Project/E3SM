@@ -27,7 +27,7 @@ contains
 #include <petsc/finclude/petsc.h>
 #endif
     ! !USES:
-    use clm_varctl             , only : use_vsfm
+    use clm_varctl             , only : use_vsfm, use_tdycore
 #ifdef USE_PETSC_LIB
     use petscsys
 #endif
@@ -39,7 +39,7 @@ contains
 #ifdef USE_PETSC_LIB
     PetscErrorCode        :: ierr
 
-    if (use_vsfm) then
+    if (use_vsfm .or. use_tdycore) then
        call PetscFinalize(ierr)
     endif
 #endif

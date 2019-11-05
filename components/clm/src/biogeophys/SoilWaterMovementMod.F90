@@ -25,6 +25,7 @@ module SoilWaterMovementMod
   ! !PRIVATE DATA MEMBERS:
   integer, parameter, public :: zengdecker_2009 = 0
   integer, parameter, public :: vsfm = 1
+  integer, parameter, public :: tdycore = 2
   integer, public :: soilroot_water_method     !0: use the Zeng and deck method, this will be readin from namelist in the future
 
   !-----------------------------------------------------------------------
@@ -37,7 +38,7 @@ contains
     !DESCRIPTION
     !specify method for doing soil&root water interactions
     !
-    use clm_varctl, only : use_vsfm, use_var_soil_thick
+    use clm_varctl, only : use_vsfm, use_var_soil_thick, use_tdycore
     use spmdMod,    only : mpicom, MPI_LOGICAL
     use shr_sys_mod,only : shr_sys_abort
     ! !ARGUMENTS:
@@ -52,6 +53,7 @@ contains
     !            call to init_hydrology() would avoid the mpi broadcast
     call mpi_bcast (use_vsfm, 1, MPI_LOGICAL, 0, mpicom, ier)
     if (use_vsfm) soilroot_water_method = vsfm
+    if (use_tdycore) soilroot_water_method = tdycore
 
     call mpi_bcast (use_var_soil_thick, 1, MPI_LOGICAL, 0, mpicom, ier)
     if (use_var_soil_thick .and. soilroot_water_method .eq. zengdecker_2009) then
@@ -86,6 +88,7 @@ contains
     use SoilWaterRetentionCurveMod , only : soil_water_retention_curve_type
     use clm_varcon                 , only : denh2o, denice, watmin
     use ColumnType                 , only : col_pp
+    use ExternalModelConstants     , only : EM_TDYCORE_SOIL_HYDRO_STAGE, EM_ID_TDYCORE
     use ExternalModelConstants     , only : EM_VSFM_SOIL_HYDRO_STAGE
     use ExternalModelConstants     , only : EM_ID_VSFM
     use ExternalModelInterfaceMod  , only : EMI_Driver
@@ -131,6 +134,22 @@ contains
        call soilwater_zengdecker2009(bounds, num_hydrologyc, filter_hydrologyc, &
             num_urbanc, filter_urbanc, soilhydrology_vars, soilstate_vars, &
             waterflux_vars, waterstate_vars, temperature_vars, soil_water_retention_curve)
+
+    case (tdycore)
+#ifdef USE_PETSC_LIB
+
+       call Prepare_Data_for_EM_VSFM_Driver(bounds, num_hydrologyc, filter_hydrologyc, &
+            soilhydrology_vars, soilstate_vars, &
+            waterflux_vars, waterstate_vars, temperature_vars)
+
+       call EMI_Driver(EM_ID_TDYCORE, EM_TDYCORE_SOIL_HYDRO_STAGE, dt = get_step_size()*1.0_r8, &
+            number_step = get_nstep(), &
+            clump_rank  = bounds%clump_index, &
+            num_hydrologyc=num_hydrologyc, filter_hydrologyc=filter_hydrologyc, &
+            soilhydrology_vars=soilhydrology_vars, soilstate_vars=soilstate_vars, &
+            waterflux_vars=waterflux_vars, waterstate_vars=waterstate_vars, &
+            temperature_vars=temperature_vars)
+#endif
 
     case (vsfm)
 #ifdef USE_PETSC_LIB

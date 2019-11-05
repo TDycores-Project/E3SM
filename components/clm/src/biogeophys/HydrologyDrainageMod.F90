@@ -55,7 +55,7 @@ contains
     use clm_varpar       , only : nlevgrnd, nlevurb, nlevsoi    
     use clm_time_manager , only : get_step_size, get_nstep
     use SoilHydrologyMod , only : CLMVICMap, Drainage
-    use clm_varctl       , only : use_vsfm
+    use clm_varctl       , only : use_vsfm, use_tdycore
     use BeTRSimulationALM, only : betr_simulation_alm_type
     !
     ! !ARGUMENTS:
@@ -139,7 +139,7 @@ contains
         call ep_betr%PreDiagSoilColWaterFlux(num_hydrologyc, filter_hydrologyc)
       endif
 
-      if (.not. use_vsfm) then
+      if (.not. (use_vsfm .or. use_tdycore)) then
          call Drainage(bounds, num_hydrologyc, filter_hydrologyc, &
               num_urbanc, filter_urbanc,&
               temperature_vars, soilhydrology_vars, soilstate_vars, &

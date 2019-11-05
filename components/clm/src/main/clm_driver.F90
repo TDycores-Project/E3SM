@@ -11,6 +11,7 @@ module clm_driver
   use shr_kind_mod           , only : r8 => shr_kind_r8
   use shr_sys_mod            , only : shr_sys_flush
   use shr_log_mod            , only : errMsg => shr_log_errMsg
+  use clm_varctl             , only : use_tdycore
   use clm_varctl             , only : wrtdia, iulog, create_glacier_mec_landunit, use_fates
   use clm_varpar             , only : nlevtrc_soil, nlevsoi
   use clm_varctl             , only : wrtdia, iulog, create_glacier_mec_landunit, use_fates, use_betr  
@@ -1244,6 +1245,7 @@ contains
           end if
        end if
 
+       if (.not.use_tdycore) then
        call t_startf('balchk')
        call ColWaterBalanceCheck(bounds_clump, &
             filter(nc)%num_do_smb_c, filter(nc)%do_smb_c, &
@@ -1258,6 +1260,7 @@ contains
             waterstate_vars, energyflux_vars, canopystate_vars        , &
             soilhydrology_vars)
        call t_stopf('gridbalchk')
+       endif
 
        call WaterBudget_SetEndingMonthlyStates(bounds_clump, waterstate_vars)
 

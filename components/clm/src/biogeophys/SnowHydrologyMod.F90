@@ -102,7 +102,7 @@ contains
     use landunit_varcon   , only : istsoil
     use clm_time_manager  , only : get_step_size
     use AerosolMod        , only : AerosolFluxes
-    use clm_varctl        , only : use_vsfm
+    use clm_varctl        , only : use_vsfm, use_tdycore
     !
     ! !ARGUMENTS:
     type(bounds_type)     , intent(in)    :: bounds            
@@ -230,7 +230,7 @@ contains
                wgdif=h2osoi_liq(c,j)
                if (wgdif >= 0._r8) exit
                h2osoi_liq(c,j) = 0._r8
-               if (.not.(j+1 > 0 .and. use_vsfm)) then
+               if (.not.(j+1 > 0 .and. (use_vsfm .or. use_tdycore))) then
                   h2osoi_liq(c,j+1) = h2osoi_liq(c,j+1) + wgdif
                else
                   mflx_neg_snow_col_1d(c-bounds%begc+1) = wgdif/dtime
