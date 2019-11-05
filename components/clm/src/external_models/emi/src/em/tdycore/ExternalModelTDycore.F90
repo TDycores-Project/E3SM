@@ -116,6 +116,7 @@ module ExternalModelTDycore
      TDy, pointer :: tdy
      DM :: dm
      TS :: ts
+     Vec :: U
 #endif
     type(mapping_type), pointer :: map_elm_sub_to_tdy_sub
     type(mapping_type), pointer :: map_tdy_sub_to_elm_sub
@@ -509,7 +510,6 @@ contains
     integer :: clm_npts
     integer :: clm_surf_npts
     PetscInt g, j, count, ngridcells
-    Vec :: U
     PetscReal, pointer :: p_loc(:)
     PetscReal, pointer :: hksat_x(:), hksat_y(:), hksat_z(:), watsat(:), thetares(:)
     PetscErrorCode :: ierr
@@ -541,23 +541,60 @@ contains
 
     call TDySetFromOptions(this%tdy,ierr);
     CHKERRA(ierr);
+
+    call DMCreateGlobalVector(this%dm,this%U,ierr);
+    CHKERRA(ierr);
+    call VecSet(this%U,91325.d0,ierr);
+    CHKERRA(ierr);
+
+    call TSCreate(PETSC_COMM_WORLD,this%ts,ierr);
+    CHKERRA(ierr);
+
+    call TSSetEquationType(this%ts,TS_EQ_IMPLICIT,ierr);
+    CHKERRA(ierr);
+
+    call TSSetType(this%ts,TSBEULER,ierr);
+    CHKERRA(ierr);
+
+    call TDySetIFunction(this%ts,this%tdy,ierr);
+    CHKERRA(ierr);
+
+    call TDySetIJacobian(this%ts,this%tdy,ierr);
+    CHKERRA(ierr);
+
+    call TSSetDM(this%ts,this%dm,ierr);
+    CHKERRA(ierr);
+
+    call TSSetSolution(this%ts,this%U,ierr);
+    CHKERRA(ierr);
+
+    call TSSetMaxSteps(this%ts,10,ierr);
+    CHKERRA(ierr);
+
+    call TSSetMaxTime(this%ts,1800.d0,ierr);
+    CHKERRA(ierr);
+
+    call TSSetExactFinalTime(this%ts,TS_EXACTFINALTIME_STEPOVER,ierr);
+    CHKERRA(ierr);
+
+    call TSSetFromOptions(this%ts,ierr);
+    CHKERRA(ierr);
+
+    call TSSetUp(this%ts,ierr);
+    CHKERRA(ierr);
+
     ! ==========================================================================
 
     ! ==========================================================================
     ! Set initial condition
-    call DMCreateGlobalVector(this%dm,U,ierr);
-    CHKERRA(ierr);
 
-    call VecSet(U,91325.d0,ierr);
-    CHKERRA(ierr);
-
-    call VecGetArrayF90(U,p_loc,ierr);
+    call VecGetArrayF90(this%U,p_loc,ierr);
     CHKERRA(ierr);
 
     call TDyUpdateState(this%tdy,p_loc,ierr);
     CHKERRA(ierr);
 
-    call VecRestoreArrayF90(U,p_loc,ierr);
+    call VecRestoreArrayF90(this%U,p_loc,ierr);
     CHKERRA(ierr);
     ! ==========================================================================
 
@@ -891,7 +928,7 @@ contains
     vis = 0.001002d0    ! [N s/m^2] @ 20 degC
     grav = 9.81d0       ! [m/s^2]
     perm = 1.d-10       ! [m^2]
-    porosity = 0.5d0
+    porosity = 0.115d0
     Sr   = 0.115d0
 
     count = 0
@@ -983,8 +1020,8 @@ contains
 
     do g = 1, ngridcells
        blockPerm((g-1)*9+1) = hksat_x(g)*vis/(den*grav)/1000.d0
-       blockPerm((g-1)*9+4) = hksat_y(g)*vis/(den*grav)/1000.d0
-       blockPerm((g-1)*9+7) = hksat_z(g)*vis/(den*grav)/1000.d0
+       blockPerm((g-1)*9+5) = hksat_y(g)*vis/(den*grav)/1000.d0
+       blockPerm((g-1)*9+9) = hksat_z(g)*vis/(den*grav)/1000.d0
        porosity(g) = watsat(g)
        residualSat(g) = thetares(g)/porosity(g)
        index(g) = g-1
@@ -1121,6 +1158,16 @@ contains
     class(emi_data_list) , intent(in)    :: l2e_list
     class(emi_data_list) , intent(inout) :: e2l_list
     type(bounds_type)    , intent(in)    :: bounds_clump
+
+    select case (em_stage)
+    case (EM_TDYCORE_SOIL_HYDRO_STAGE)
+       call EM_TDYCORE_Solve_Soil_Hydro(this, em_stage, dt, nstep, l2e_list, e2l_list, &
+            bounds_clump)
+
+    case default
+       write(iulog,*)'EM_FATES_Solve: Unknown em_stage.'
+       call endrun(msg=errMsg(__FILE__, __LINE__))
+    end select
 
   end subroutine EM_TDycore_Solve
 
@@ -1262,5 +1309,544 @@ contains
     call VecRestoreArrayF90(elm_tdycore_idata%sucsat_elm_svec  , sucsat_loc , ierr)
 
    end subroutine extract_data_for_elm
+
+    !------------------------------------------------------------------------
+  subroutine EM_TDycore_Solve_Soil_Hydro(this, em_stage, dt, nstep, l2e_list, e2l_list, &
+       bounds_clump)
+    !
+    ! !DESCRIPTION:
+    ! Solve the Variably Saturated Flow Model (VSFM) in soil columns.
+    !
+#include <petsc/finclude/petsc.h>
+    !
+    ! !USES:
+    use shr_kind_mod              , only : r8 => shr_kind_r8
+    use abortutils                , only : endrun
+    use shr_log_mod               , only : errMsg => shr_log_errMsg
+    use MultiPhysicsProbConstants , only : VAR_BC_SS_CONDITION
+    use MultiPhysicsProbConstants , only : VAR_TEMPERATURE
+    use MultiPhysicsProbConstants , only : VAR_PRESSURE
+    use MultiPhysicsProbConstants , only : VAR_LIQ_SAT
+    use MultiPhysicsProbConstants , only : VAR_FRAC_LIQ_SAT
+    use MultiPhysicsProbConstants , only : VAR_MASS
+    use MultiPhysicsProbConstants , only : VAR_SOIL_MATRIX_POT
+    use MultiPhysicsProbConstants , only : VAR_LATERAL_MASS_EXCHANGED
+    use MultiPhysicsProbConstants , only : VAR_BC_MASS_EXCHANGED
+    use MultiPhysicsProbConstants , only : AUXVAR_INTERNAL
+    use MultiPhysicsProbConstants , only : AUXVAR_BC
+    use MultiPhysicsProbConstants , only : AUXVAR_SS
+    use mpp_varpar                , only : nlevgrnd
+    use clm_varcon                , only : denice, denh2o
+    use petscsnes
+    !
+    implicit none
+    !
+    ! !ARGUMENTS:
+    class(em_tdycore_type)              :: this
+    integer              , intent(in)    :: em_stage
+    real(r8)             , intent(in)    :: dt
+    integer              , intent(in)    :: nstep
+    class(emi_data_list) , intent(in)    :: l2e_list
+    class(emi_data_list) , intent(inout) :: e2l_list
+    type(bounds_type)    , intent(in)    :: bounds_clump
+    !
+    ! !LOCAL VARIABLES:
+    integer                              :: p,c,fc,j,g                                                       ! do loop indices
+    integer                              :: pi                                                               ! pft index
+    real(r8)                             :: dzsum                                                            ! summation of dzmm of layers below water table (mm)
+    real(r8)                             :: dtime
+
+    real(r8)  , pointer                  :: mflx_et_col_1d         (:)
+    real(r8)  , pointer                  :: mflx_infl_col_1d       (:)
+    real(r8)  , pointer                  :: mflx_dew_col_1d        (:)
+    real(r8)  , pointer                  :: mflx_drain_col_1d      (:)
+    real(r8)  , pointer                  :: mflx_sub_snow_col_1d   (:)
+    real(r8)  , pointer                  :: mflx_snowlyr_col_1d    (:)
+    real(r8)  , pointer                  :: t_soil_col_1d          (:)
+    integer    , pointer                 :: col_active             (:)
+    integer    , pointer                 :: col_gridcell           (:)
+
+    real(r8)  , pointer                  :: fliq_col_1d       (:)
+    real(r8)  , pointer                  :: mass_col_1d       (:)
+    real(r8)  , pointer                  :: smpl_col_1d       (:)
+    real(r8)  , pointer                  :: soilp_col_1d      (:)
+    real(r8)  , pointer                  :: sat_col_1d        (:)
+
+    real(r8)  , pointer                  :: frac_ice                    (:,:) ! fraction of ice
+    real(r8)  , pointer                  :: total_mass_flux_col         (:)            ! Sum of all source-sinks conditions for VSFM solver at column level
+    real(r8)  , pointer                  :: total_mass_flux_et_col      (:)            ! ET sink for VSFM solver at column level
+    real(r8)  , pointer                  :: total_mass_flux_infl_col    (:)            ! Infiltration source for VSFM solver at column level
+    real(r8)  , pointer                  :: total_mass_flux_dew_col     (:)            ! Dew source for VSFM solver at column level
+    real(r8)  , pointer                  :: total_mass_flux_drain_col   (:)            ! Drainage sink for VSFM solver at column level
+    real(r8)  , pointer                  :: total_mass_flux_snowlyr_col (:)            ! Flux due to disappearance of snow for VSFM solver at column level
+    real(r8)  , pointer                  :: total_mass_flux_sub_col     (:)            ! Sublimation sink for VSFM solver at column level
+    real(r8)  , pointer                  :: total_mass_flux_lateral_col (:)            ! Lateral flux computed by VSFM solver at column level
+    real(r8)  , pointer                  :: total_mass_flux_seepage_col (:)            ! Seepage flux computed by VSFM solver at column level
+    real(r8)  , pointer                  :: qflx_seepage                (:)            ! Seepage flux computed by VSFM solver at column level
+    real(r8)  , pointer                  :: mass_prev_col          (:,:) ! Mass of water before a VSFM solve
+    real(r8)  , pointer                  :: dmass_col              (:)            ! Change in mass of water after a VSFM solve
+    real(r8)  , pointer                  :: mass_beg_col                (:)            ! Total mass before a VSFM solve
+    real(r8)  , pointer                  :: mass_end_col                (:)            ! Total mass after a VSFM solve
+    integer                              :: ier                                                              ! error status
+
+    integer                              :: begc, endc
+    integer                              :: g_idx, c_idx
+
+    PetscInt                             :: soe_auxvar_id                                                    ! Index of system-of-equation's (SoE's) auxvar
+    PetscErrorCode                       :: ierr                                                             ! PETSc return error code
+
+    PetscBool                            :: converged                                                        ! Did VSFM solver converge to a solution with given PETSc SNES tolerances
+    PetscInt                             :: converged_reason                                                 ! SNES converged due to which criteria
+    PetscReal                            :: atol_default                                                     ! Default SNES absolute convergance tolerance
+    PetscReal                            :: rtol_default                                                     ! Default SNES relative convergance tolerance
+    PetscReal                            :: stol_default                                                     ! Default SNES solution convergance tolerance
+    PetscInt                             :: max_it_default                                                   ! Default SNES maximum number of iteration
+    PetscInt                             :: max_f_default                                                    ! Default SNES maximum number of function evaluation
+    PetscReal                            :: stol                                                             ! solution convergance tolerance
+    PetscReal                            :: rtol                                                             ! relative convergance tolerance
+    PetscReal,parameter                  :: stol_alternate = 1.d-10                                          ! Alternate solution convergance tolerance
+
+    PetscReal                            :: mass_beg                                                         ! Sum of mass of water for all active soil columns before VSFM is called
+    PetscReal                            :: mass_end                                                         ! Sum of mass of water for all active soil columns after VSFM is called
+    PetscReal                            :: total_mass_flux_et                                               ! Sum of mass ET mass flux of water for all active soil columns
+    PetscReal                            :: total_mass_flux_infl                                             ! Sum of mass infiltration mass flux of water for all active soil columns
+    PetscReal                            :: total_mass_flux_dew                                              ! Sum of mass dew mass flux of water for all active soil columns
+    PetscReal                            :: total_mass_flux_drain                                            ! Sum of mass drainage mass flux of water for all active soil columns
+    PetscReal                            :: total_mass_flux_snowlyr                                          ! Sum of mass snow layer disappearance mass flux of water for all active soil columns
+    PetscReal                            :: total_mass_flux_sub                                              ! Sum of mass sublimation mass flux of water for all active soil columns
+    PetscReal                            :: total_mass_flux_lateral                                          ! Sum of lateral mass flux for all active soil columns
+    PetscReal                            :: total_mass_flux                                                  ! Sum of mass ALL mass flux of water for all active soil columns
+    PetscInt                             :: iter_count                                                       ! How many times VSFM solver is called
+
+    PetscInt, parameter                  :: max_iter_count = 10                                              ! Maximum number of times VSFM can be called
+    PetscInt                             :: diverged_count                                                   ! Number of time VSFM solver diverged
+    PetscInt                             :: mass_bal_err_count                                               ! Number of time VSFM solver returns a solution that isn't within acceptable mass balance error threshold
+    PetscReal                            :: abs_mass_error_col                                               ! Maximum absolute error for any active soil column
+    PetscReal, parameter                 :: max_abs_mass_error_col  = 1.e-5                                  ! Acceptable mass balance error
+    PetscBool                            :: successful_step                                                  ! Is the solution return by VSFM acceptable
+    PetscReal , pointer                  :: soilp_col_ghosted_1d(:)
+    PetscReal , pointer                  :: fliq_col_ghosted_1d(:)
+    PetscReal , pointer                  :: mflx_lateral_col_1d(:)
+    PetscReal , pointer                  :: lat_mass_exc_col_1d(:)
+    PetscReal , pointer                  :: seepage_mass_exc_col_1d(:)
+    PetscReal , pointer                  :: seepage_press_1d(:)
+
+    integer                              :: jwt
+    real(r8)                             :: z_dn, z_up
+
+    real(r8)  , pointer                  :: l2e_mflux_infil(:)
+    real(r8)  , pointer                  :: l2e_mflux_dew(:)
+    real(r8)  , pointer                  :: l2e_mflux_sub_snow(:)
+    real(r8)  , pointer                  :: l2e_mflux_snowlyr(:)
+    real(r8)  , pointer                  :: l2e_mflux_et(:,:)
+    real(r8)  , pointer                  :: l2e_mflux_drain(:,:)
+    real(r8)  , pointer                  :: l2e_h2osoi_liq(:,:)
+    real(r8)  , pointer                  :: l2e_h2osoi_ice(:,:)
+    real(r8)  , pointer                  :: l2e_zi(:,:)
+    real(r8)  , pointer                  :: col_dz(:,:)
+    integer   , pointer                  :: l2e_filter_hydrologyc(:)
+    integer                              :: l2e_num_hydrologyc
+
+    real(r8)  , pointer                  :: e2l_h2osoi_liq(:,:)
+    real(r8)  , pointer                  :: e2l_h2osoi_ice(:,:)
+    real(r8)  , pointer                  :: e2l_smp(:,:)
+    real(r8)  , pointer                  :: e2l_wtd(:)
+    real(r8)  , pointer                  :: e2l_soilp(:,:)
+    real(r8)  , pointer                  :: e2l_qrecharge(:)
+
+    PetscScalar, pointer :: qflx_elm_loc(:)
+    PetscScalar, pointer :: area_clm_loc(:)
+    PetscScalar, pointer :: e2l_drain_perched(:)
+    PetscScalar, pointer :: e2l_drain(:)
+    PetscScalar, pointer :: e2l_qrgwl(:)
+    PetscScalar, pointer :: e2l_rsub_sat(:)
+
+    integer :: bounds_proc_begc, bounds_proc_endc
+    integer :: nlevmapped
+    real(r8) :: col_wtgcell
+    real(r8) :: area
+    integer :: ngridcells, nvalues
+    integer, pointer :: index(:)
+    PetscReal, pointer :: liquid_mass(:), mass_p(:), p_loc(:), qflx_p(:)
+
+    !-----------------------------------------------------------------------
+
+    bounds_proc_begc     = bounds_clump%begc
+    bounds_proc_endc     = bounds_clump%endc
+
+    ! Get time step
+
+    dtime = dt
+
+    call l2e_list%GetPointerToReal1D(this%index_l2e_flux_infil       , l2e_mflux_infil       )
+    call l2e_list%GetPointerToReal1D(this%index_l2e_flux_dew         , l2e_mflux_dew         )
+    call l2e_list%GetPointerToReal1D(this%index_l2e_flux_snow_sub    , l2e_mflux_sub_snow    )
+    call l2e_list%GetPointerToReal1D(this%index_l2e_flux_snowlyr     , l2e_mflux_snowlyr     )
+
+    call l2e_list%GetPointerToReal2D(this%index_l2e_flux_et          , l2e_mflux_et          )
+    call l2e_list%GetPointerToReal2D(this%index_l2e_flux_drainage    , l2e_mflux_drain       )
+    call l2e_list%GetPointerToReal2D(this%index_l2e_state_h2osoi_liq , l2e_h2osoi_liq        )
+    call l2e_list%GetPointerToReal2D(this%index_l2e_state_h2osoi_ice , l2e_h2osoi_ice        )
+
+    call l2e_list%GetPointerToInt1D(this%index_l2e_filter_hydrologyc , l2e_filter_hydrologyc )
+    call l2e_list%GetIntValue(this%index_l2e_filter_num_hydrologyc   , l2e_num_hydrologyc    )
+
+    call l2e_list%GetPointerToReal2D(this%index_l2e_column_zi        , l2e_zi                )
+    call l2e_list%GetPointerToInt1D(this%index_l2e_col_active        , col_active            )
+    call l2e_list%GetPointerToInt1D(this%index_l2e_col_gridcell      , col_gridcell          )
+    call l2e_list%GetPointerToReal2D(this%index_l2e_init_col_dz      , col_dz                )
+
+    call e2l_list%GetPointerToReal1D(this%index_e2l_state_wtd        , e2l_wtd               )
+    call e2l_list%GetPointerToReal2D(this%index_e2l_state_h2osoi_liq , e2l_h2osoi_liq        )
+    call e2l_list%GetPointerToReal2D(this%index_e2l_state_h2osoi_ice , e2l_h2osoi_ice        )
+    !call e2l_list%GetPointerToReal2D(this%index_e2l_state_smp        , e2l_smp               )
+    call e2l_list%GetPointerToReal2D(this%index_e2l_state_soilp      , e2l_soilp             )
+
+    call e2l_list%GetPointerToReal1D(this%index_e2l_flux_qrecharge    , e2l_qrecharge        )
+    call e2l_list%GetPointerToReal1D(this%index_e2l_flux_drain_perched, e2l_drain_perched    )
+    call e2l_list%GetPointerToReal1D(this%index_e2l_flux_drain        , e2l_drain            )
+    call e2l_list%GetPointerToReal1D(this%index_e2l_flux_qrgwl        , e2l_qrgwl            )
+    call e2l_list%GetPointerToReal1D(this%index_e2l_flux_rsub_sat     , e2l_rsub_sat         )
+
+    begc = bounds_proc_begc
+    endc = bounds_proc_endc
+
+    allocate(frac_ice                    (begc:endc,1:nlevgrnd))
+    allocate(total_mass_flux_col         (begc:endc))
+    allocate(total_mass_flux_et_col      (begc:endc))
+    allocate(total_mass_flux_infl_col    (begc:endc))
+    allocate(total_mass_flux_dew_col     (begc:endc))
+    allocate(total_mass_flux_drain_col   (begc:endc))
+    allocate(total_mass_flux_snowlyr_col (begc:endc))
+    allocate(total_mass_flux_sub_col     (begc:endc))
+    allocate(total_mass_flux_lateral_col (begc:endc))
+    allocate(total_mass_flux_seepage_col (begc:endc))
+    allocate(qflx_seepage                (begc:endc))
+    allocate(mass_prev_col          (begc:endc,1:nlevgrnd))
+    allocate(dmass_col              (begc:endc))
+    allocate(mass_beg_col                (begc:endc))
+    allocate(mass_end_col                (begc:endc))
+
+    allocate(mflx_et_col_1d              ((endc-begc+1)*nlevgrnd))
+    allocate(mflx_drain_col_1d           ((endc-begc+1)*nlevgrnd))
+    allocate(mflx_infl_col_1d            (endc-begc+1))
+    allocate(mflx_dew_col_1d             (endc-begc+1))
+    allocate(mflx_sub_snow_col_1d        (endc-begc+1))
+    allocate(mflx_snowlyr_col_1d         (endc-begc+1))
+    allocate(t_soil_col_1d               ((endc-begc+1)*nlevgrnd))
+
+    allocate(mass_col_1d            ((endc-begc+1)*nlevgrnd))
+    allocate(fliq_col_1d            ((endc-begc+1)*nlevgrnd))
+    allocate(smpl_col_1d            ((endc-begc+1)*nlevgrnd))
+    allocate(soilp_col_1d           ((endc-begc+1)*nlevgrnd))
+    allocate(sat_col_1d             ((endc-begc+1)*nlevgrnd))
+
+    ! initialize
+    mflx_et_col_1d(:)                = 0.d0
+    mflx_infl_col_1d(:)              = 0.d0
+    mflx_dew_col_1d(:)               = 0.d0
+    mflx_drain_col_1d(:)             = 0.d0
+    mflx_sub_snow_col_1d(:)          = 0.d0
+    mflx_snowlyr_col_1d(:)           = 0.d0
+    t_soil_col_1d(:)                 = 298.15d0
+
+    mass_beg                         = 0.d0
+    mass_end                         = 0.d0
+    total_mass_flux                  = 0.d0
+    total_mass_flux_et               = 0.d0
+    total_mass_flux_infl             = 0.d0
+    total_mass_flux_dew              = 0.d0
+    total_mass_flux_drain            = 0.d0
+    total_mass_flux_snowlyr          = 0.d0
+    total_mass_flux_sub              = 0.d0
+    total_mass_flux_lateral          = 0.d0
+
+    mass_beg_col(:)                  = 0.d0
+    mass_end_col(:)                  = 0.d0
+    total_mass_flux_col(:)           = 0.d0
+    total_mass_flux_et_col(:)        = 0.d0
+    total_mass_flux_infl_col(:)      = 0.d0
+    total_mass_flux_dew_col(:)       = 0.d0
+    total_mass_flux_drain_col(:)     = 0.d0
+    total_mass_flux_snowlyr_col(:)   = 0.d0
+    total_mass_flux_sub_col(:)       = 0.d0
+    total_mass_flux_lateral_col(:)   = 0.d0
+
+    mass_prev_col(:,:)          = 0.d0
+    dmass_col(:)                = 0.d0
+
+    nlevmapped = elm_tdycore_idata%nzelm_mapped
+
+    ! Get total mass
+    call VecGetSize(elm_tdycore_idata%mass_elm_svec,ngridcells,ierr);
+    CHKERRA(ierr);
+
+    call VecGetArrayF90(this%U,p_loc,ierr);
+    CHKERRA(ierr);
+    call TDyUpdateState(this%tdy,p_loc,ierr);
+    CHKERRA(ierr);
+    call VecRestoreArrayF90(this%U,p_loc,ierr);
+    CHKERRA(ierr);
+
+    allocate(liquid_mass(ngridcells))
+
+    call TDyGetLiquidMassValuesLocal(this%tdy,nvalues,liquid_mass,ierr)
+    CHKERRA(ierr);
+
+    call VecGetArrayF90(elm_tdycore_idata%mass_tdycore_mvec, mass_p, ierr)
+    CHKERRA(ierr);
+    do g = 1, ngridcells
+      mass_p(g) = liquid_mass(g)
+    enddo
+    deallocate(liquid_mass)
+    call VecRestoreArrayF90(elm_tdycore_idata%mass_tdycore_mvec, mass_p, ierr)
+    CHKERRA(ierr);
+
+    call MappingSourceToDestination(this%map_tdy_sub_to_elm_sub, &
+        elm_tdycore_idata%mass_tdycore_mvec, &
+        elm_tdycore_idata%mass_elm_svec)
+
+    call VecGetArrayF90(elm_tdycore_idata%mass_elm_svec, mass_p, ierr); CHKERRQ(ierr)
+
+    area = 1._r8
+    do fc = 1, l2e_num_hydrologyc
+       c = l2e_filter_hydrologyc(fc)
+       g = col_gridcell(c)
+
+       do j = 1, nlevmapped
+
+          c_idx = (c - begc)*nlevgrnd + j
+          g_idx = (g - bounds_clump%begg)*nlevmapped + j
+
+          mflx_et_col_1d(c_idx)          = l2e_mflux_et(c,j)
+          mflx_drain_col_1d(c_idx)       = l2e_mflux_drain(c,j)
+
+          total_mass_flux_et           = total_mass_flux_et           + mflx_et_col_1d(c_idx)
+          total_mass_flux_et_col(c)    = total_mass_flux_et_col(c)    + mflx_et_col_1d(c_idx)
+
+          total_mass_flux_drain        = total_mass_flux_drain        + mflx_drain_col_1d(c_idx)
+          total_mass_flux_drain_col(c) = total_mass_flux_drain_col(c) + mflx_drain_col_1d(c_idx)
+
+          mass_beg                     = mass_beg                     + mass_p(g_idx)!/area_clm_loc(g_idx)
+          mass_beg_col(c)              = mass_beg_col(c)              + mass_p(g_idx)!/area_clm_loc(g_idx)
+          mass_prev_col(c,j)      = mass_col_1d(c_idx)
+       end do
+
+       c_idx = c - begc+1
+
+       mflx_dew_col_1d(c_idx)        = l2e_mflux_dew(c)
+       mflx_infl_col_1d(c_idx)       = l2e_mflux_infil(c)
+       mflx_snowlyr_col_1d(c_idx)    = l2e_mflux_snowlyr(c)
+       mflx_sub_snow_col_1d(c_idx)   = l2e_mflux_sub_snow(c)
+
+       total_mass_flux_dew            = total_mass_flux_dew            + mflx_dew_col_1d(c_idx)
+       total_mass_flux_dew_col(c)     = total_mass_flux_dew_col(c)     + mflx_dew_col_1d(c_idx)
+
+       total_mass_flux_infl           = total_mass_flux_infl           + mflx_infl_col_1d(c_idx)
+       total_mass_flux_infl_col(c)    = total_mass_flux_infl_col(c)    + mflx_infl_col_1d(c_idx)
+
+       total_mass_flux_snowlyr        = total_mass_flux_snowlyr        + mflx_snowlyr_col_1d(c_idx)
+       total_mass_flux_snowlyr_col(c) = total_mass_flux_snowlyr_col(c) + mflx_snowlyr_col_1d(c_idx)
+
+       total_mass_flux_sub            = total_mass_flux_sub            + mflx_sub_snow_col_1d(c_idx)
+       total_mass_flux_sub_col(c)     = total_mass_flux_sub_col(c)     + mflx_sub_snow_col_1d(c_idx)
+
+       total_mass_flux_col(c) = total_mass_flux_et_col(c)      + &
+            total_mass_flux_infl_col(c)    + &
+            total_mass_flux_dew_col(c)     + &
+            total_mass_flux_drain_col(c)   + &
+            total_mass_flux_snowlyr_col(c) + &
+            total_mass_flux_sub_col(c)     + &
+            total_mass_flux_lateral_col(c)
+    end do
+    total_mass_flux        = &
+         total_mass_flux_et        + &
+         total_mass_flux_infl      + &
+         total_mass_flux_dew       + &
+         total_mass_flux_drain     + &
+         total_mass_flux_snowlyr   + &
+         total_mass_flux_sub       + &
+         total_mass_flux_lateral
+    call VecRestoreArrayF90(elm_tdycore_idata%mass_elm_svec, mass_p, ierr); CHKERRQ(ierr)
+
+    call VecGetArrayF90(elm_tdycore_idata%qflx_elm_mvec, qflx_elm_loc, ierr); CHKERRQ(ierr)
+
+    frac_ice(:,:)       = 0.d0
+    do fc = 1, l2e_num_hydrologyc
+       c = l2e_filter_hydrologyc(fc)
+       do j = 1, nlevmapped
+          frac_ice(c,j) = l2e_h2osoi_ice(c,j)/(l2e_h2osoi_liq(c,j) + l2e_h2osoi_ice(c,j))
+       end do
+    end do
+
+    ! Initialize ET sink to ZERO
+    do g = bounds_clump%begg, bounds_clump%endg
+       do j = 1,nlevmapped
+          g_idx = (g - bounds_clump%begg)*nlevmapped + j
+          qflx_elm_loc(g_idx) = 0.0_r8
+       end do
+    end do
+
+    ! Account for following fluxes in the top soil layer:
+    ! - infiltration
+    ! - dew
+    ! - disapperance of snow layer
+    ! - sublimation of snow
+    j = 1
+    col_wtgcell = 1._r8
+    do c = bounds_proc_begc, bounds_proc_endc
+       if (col_active(c) == 1) then
+          ! Set gridcell indices
+          g = col_gridcell(c)
+          g_idx = (g - bounds_clump%begg)*nlevmapped + j
+          c_idx = c - begc+1
+          qflx_elm_loc(g_idx) = qflx_elm_loc(g_idx) + &
+               (&
+               mflx_infl_col_1d(c_idx)    + &
+               mflx_dew_col_1d(c_idx)     + &
+               mflx_snowlyr_col_1d(c_idx) + &
+               mflx_sub_snow_col_1d(c_idx)  &
+               )*col_wtgcell!*area_clm_loc(g_idx)
+       end if
+       total_mass_flux_col(c) = 0.d0
+    enddo
+
+    ! Account for evapotranspiration flux
+    do c = bounds_proc_begc, bounds_proc_endc
+       do j = 1,nlevmapped
+          g = col_gridcell(c)
+          g_idx = (g - bounds_clump%begg)*nlevmapped + j
+          c_idx = (c - bounds_proc_begc)*nlevgrnd+j
+          if (col_active(c) == 1) then
+             qflx_elm_loc(g_idx) = qflx_elm_loc(g_idx) + &
+                  mflx_et_col_1d(c_idx)!*area_clm_loc(g_idx)
+             total_mass_flux_col(c) = total_mass_flux_col(c) + qflx_elm_loc(g_idx)!/area_clm_loc(g_idx)
+          end if
+       end do
+    end do
+
+    call VecRestoreArrayF90(elm_tdycore_idata%qflx_elm_mvec, qflx_elm_loc, ierr); CHKERRQ(ierr)
+
+    call MappingSourceToDestination(this%map_elm_sub_to_tdy_sub, &
+        elm_tdycore_idata%qflx_elm_mvec, &
+        elm_tdycore_idata%qflx_tdycore_svec)
+
+    call VecGetSize(elm_tdycore_idata%qflx_tdycore_svec,ngridcells,ierr);
+    call VecGetArrayF90(elm_tdycore_idata%qflx_tdycore_svec,qflx_p,ierr); CHKERRQ(ierr)
+    allocate(index(ngridcells))
+    do g = 1, ngridcells
+       index(g) = g-1
+    enddo
+    call TDySetSourceSinkValuesLocal(this%tdy,ngridcells,index,qflx_p,ierr)
+    call VecRestoreArrayF90(elm_tdycore_idata%qflx_tdycore_svec,qflx_p,ierr); CHKERRQ(ierr)
+    deallocate(index)
+
+    call TSSetTime(this%ts,0.d0,ierr);CHKERRQ(ierr)
+    call TSSetTimeStep(this%ts,dt,ierr);CHKERRQ(ierr)
+    call TSSetMaxTime(this%ts,dt,ierr);
+    call TSSetStepNumber(this%ts,0,ierr);CHKERRQ(ierr)
+    call TSSetExactFinalTime(this%ts,TS_EXACTFINALTIME_MATCHSTEP,ierr);CHKERRQ(ierr)
+    call TSSolve(this%ts,this%U,ierr);
+
+    allocate(liquid_mass(ngridcells))
+
+    call TDyGetLiquidMassValuesLocal(this%tdy,nvalues,liquid_mass,ierr)
+    CHKERRA(ierr);
+
+    call VecGetArrayF90(elm_tdycore_idata%mass_tdycore_mvec, mass_p, ierr)
+    CHKERRA(ierr);
+    do g = 1, ngridcells
+      mass_p(g) = liquid_mass(g)
+    enddo
+    deallocate(liquid_mass)
+    call VecRestoreArrayF90(elm_tdycore_idata%mass_tdycore_mvec, mass_p, ierr)
+    CHKERRA(ierr);
+
+    call MappingSourceToDestination(this%map_tdy_sub_to_elm_sub, &
+        elm_tdycore_idata%mass_tdycore_mvec, &
+        elm_tdycore_idata%mass_elm_svec)
+
+    call VecGetArrayF90(elm_tdycore_idata%mass_elm_svec, mass_p, ierr); CHKERRQ(ierr)
+
+    do fc = 1, l2e_num_hydrologyc
+       c = l2e_filter_hydrologyc(fc)
+       g = col_gridcell(c)
+
+       ! initialization
+       jwt = -1
+
+       ! Loops in decreasing j so WTD can be computed in the same loop
+       e2l_h2osoi_liq(c,:) = 0._r8
+       e2l_h2osoi_ice(c,:) = 0._r8
+       do j = nlevmapped, 1, -1
+          g_idx = (g - bounds_clump%begg)*nlevmapped + j
+
+          e2l_h2osoi_liq(c,j) =  (1.d0 - frac_ice(c,j))*mass_p(g_idx)!/area_clm_loc(g_idx)
+          e2l_h2osoi_ice(c,j) =  frac_ice(c,j)         *mass_p(g_idx)!/area_clm_loc(g_idx)
+
+          mass_end        = mass_end        + mass_p(g_idx)!/area_clm_loc(g_idx)
+          mass_end_col(c) = mass_end_col(c) + mass_p(g_idx)!/area_clm_loc(g_idx)
+
+       end do
+
+       ! Find maximum water balance error over the column
+       abs_mass_error_col = max(abs_mass_error_col,                     &
+            abs(mass_beg_col(c) - mass_end_col(c) + &
+            total_mass_flux_col(c)*dt))
+       e2l_qrecharge     (c) = 0._r8
+
+       e2l_wtd(c) = l2e_zi(c,nlevmapped)
+    end do
+
+    ! Save soil liquid pressure from VSFM for all (active+nonactive) cells.
+    ! soilp_col is used for restarting VSFM.
+    do c = begc, endc
+       do j = 1, nlevgrnd
+          c_idx = (c - begc)*nlevgrnd + j
+          e2l_soilp(c,j) = 0._r8!soilp_col_1d(c_idx)
+       end do
+    end do
+
+    e2l_drain_perched (:) = 0._r8
+    e2l_drain         (:) = 0._r8
+    e2l_qrgwl         (:) = 0._r8
+    e2l_rsub_sat      (:) = 0._r8
+
+    call VecRestoreArrayF90(elm_tdycore_idata%mass_elm_svec, mass_p, ierr); CHKERRQ(ierr)
+
+    !write(*,*)'abs_mass_error_col = ',abs_mass_error_col
+
+
+    deallocate(frac_ice                    )
+    deallocate(total_mass_flux_col         )
+    deallocate(total_mass_flux_et_col      )
+    deallocate(total_mass_flux_infl_col    )
+    deallocate(total_mass_flux_dew_col     )
+    deallocate(total_mass_flux_drain_col   )
+    deallocate(total_mass_flux_snowlyr_col )
+    deallocate(total_mass_flux_sub_col     )
+    deallocate(total_mass_flux_lateral_col )
+    deallocate(total_mass_flux_seepage_col )
+    deallocate(qflx_seepage                )
+    deallocate(mass_prev_col          )
+    deallocate(dmass_col              )
+    deallocate(mass_beg_col                )
+    deallocate(mass_end_col                )
+
+    deallocate(mflx_et_col_1d              )
+    deallocate(mflx_drain_col_1d           )
+    deallocate(mflx_infl_col_1d            )
+    deallocate(mflx_dew_col_1d             )
+    deallocate(mflx_sub_snow_col_1d        )
+    deallocate(mflx_snowlyr_col_1d         )
+    deallocate(t_soil_col_1d               )
+
+    deallocate(mass_col_1d            )
+    deallocate(fliq_col_1d            )
+    deallocate(smpl_col_1d            )
+    deallocate(soilp_col_1d           )
+    deallocate(sat_col_1d             )
+
+  end subroutine EM_TDycore_Solve_Soil_Hydro
 
 end module ExternalModelTDycore
