@@ -602,7 +602,9 @@ contains
        enddo
 
     case (EM_ID_TDYCORE)
+       write(*,*)'call EMI_Init_TDycore()'
        call EMI_Init_TDycore()
+       write(*,*)'call EMI_Init_TDycore() done'
 
     case default
        call endrun('Unknown External Model')
@@ -723,6 +725,7 @@ contains
     ! Initialize the external model
     call em_tdycore%Init(l2e_init_list(clump_rank), e2l_init_list(clump_rank), &
          iam, bounds_clump)
+    write(*,*)' em_tdycore%Init DONE'
 
     ! Build a column level filter on which TDycore is active.
     ! This new filter would be used during the initialization to
@@ -902,6 +905,7 @@ contains
     use ExternalModelConstants , only : EM_ID_VSFM
     use ExternalModelConstants , only : EM_ID_PTM
     use ExternalModelConstants , only : EM_ID_STUB
+    use ExternalModelConstants , only : EM_ID_TDYCORE
     use SoilStateType          , only : soilstate_type
     use SoilHydrologyType      , only : soilhydrology_type
     use TemperatureType        , only : temperature_type
@@ -964,6 +968,8 @@ contains
        index_em = index_em_vsfm
     case (EM_ID_PTM)
        index_em = index_em_ptm
+    case (EM_ID_TDYCORE)
+       index_em = index_em_tdycore
     case (EM_ID_STUB)
        index_em = index_em_stub
        write(iulog,*)'     2.1 Value of variables send by ELM'
@@ -1164,6 +1170,14 @@ contains
             l2e_driver_list(iem), e2l_driver_list(iem), bounds_clump)
 #else
        call endrun('PTM is on but code was not compiled with -DUSE_PETSC_LIB')
+#endif
+
+    case (EM_ID_TDYCORE)
+#ifdef USE_PETSC_LIB
+       call em_tdycore%Solve(em_stage, dtime, nstep, clump_rank, &
+            l2e_driver_list(iem), e2l_driver_list(iem), bounds_clump)
+#else
+       call endrun('VSFM is on but code was not compiled with -DUSE_PETSC_LIB')
 #endif
 
     case (EM_ID_STUB)
