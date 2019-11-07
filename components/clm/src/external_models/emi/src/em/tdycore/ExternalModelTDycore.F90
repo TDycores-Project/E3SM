@@ -26,7 +26,8 @@ module ExternalModelTDycore
   use EMI_WaterStateType_Constants
   use elm_tdycore_interface_data
 
-  !use petscvec
+  use petscsnes
+  use petscvec
   use petscdm
   use petscts
   use Mapping_module
@@ -36,6 +37,9 @@ module ExternalModelTDycore
 #endif
 
   implicit none
+
+  PetscInt, parameter :: tdycore_solver_ts = 1
+  PetscInt, parameter :: tdycore_solver_snes = 2
 
   type, public, extends(em_base_type) :: em_tdycore_type
      ! ----------------------------------------------------------------------
@@ -116,7 +120,9 @@ module ExternalModelTDycore
      TDy, pointer :: tdy
      DM :: dm
      TS :: ts
+     SNES :: snes
      Vec :: U
+     PetscInt :: tdycore_solver_type
 #endif
     type(mapping_type), pointer :: map_elm_sub_to_tdy_sub
     type(mapping_type), pointer :: map_tdy_sub_to_elm_sub
@@ -459,8 +465,25 @@ contains
     PetscBool              :: flg
     PetscInt               :: dim, faces(3)
     PetscReal              :: lower(3), upper(3)
+    character(len=256)     :: solver_type
 
     allocate(this%tdy)
+
+    this%tdycore_solver_type = tdycore_solver_ts
+
+    call PetscOptionsGetString (PETSC_NULL_OPTIONS, PETSC_NULL_CHARACTER, &
+         '-tdycore_solver_type', solver_type, flg, ierr)
+    if (flg) then
+      select case(trim(solver_type))
+      case('ts')
+        this%tdycore_solver_type = tdycore_solver_ts
+      case('snes')
+        this%tdycore_solver_type = tdycore_solver_snes
+      case default
+        write(iulog,*)'Unknown -tdycore_solver_type ',trim(solver_type)
+        call endrun('ERROR: Only ts or snes is supported -tdycore_solver_type' )
+      end select
+    endif
 
     call PetscOptionsGetString(PETSC_NULL_OPTIONS,PETSC_NULL_CHARACTER, &
          "-mesh_filename",mesh_filename,flg,ierr);CHKERRQ(ierr)
@@ -544,44 +567,67 @@ contains
 
     call DMCreateGlobalVector(this%dm,this%U,ierr);
     CHKERRA(ierr);
-    call VecSet(this%U,91325.d0,ierr);
+    call VecSet(this%U,71325.d0,ierr);
     CHKERRA(ierr);
 
-    call TSCreate(PETSC_COMM_WORLD,this%ts,ierr);
-    CHKERRA(ierr);
+    select case(this%tdycore_solver_type)
+    case (tdycore_solver_ts)
+      call TSCreate(PETSC_COMM_WORLD,this%ts,ierr);
+      CHKERRA(ierr);
 
-    call TSSetEquationType(this%ts,TS_EQ_IMPLICIT,ierr);
-    CHKERRA(ierr);
+      call TSSetEquationType(this%ts,TS_EQ_IMPLICIT,ierr);
+      CHKERRA(ierr);
 
-    call TSSetType(this%ts,TSBEULER,ierr);
-    CHKERRA(ierr);
+      call TSSetType(this%ts,TSBEULER,ierr);
+      CHKERRA(ierr);
 
-    call TDySetIFunction(this%ts,this%tdy,ierr);
-    CHKERRA(ierr);
+      call TDySetIFunction(this%ts,this%tdy,ierr);
+      CHKERRA(ierr);
 
-    call TDySetIJacobian(this%ts,this%tdy,ierr);
-    CHKERRA(ierr);
+      call TDySetIJacobian(this%ts,this%tdy,ierr);
+      CHKERRA(ierr);
 
-    call TSSetDM(this%ts,this%dm,ierr);
-    CHKERRA(ierr);
+      call TSSetDM(this%ts,this%dm,ierr);
+      CHKERRA(ierr);
 
-    call TSSetSolution(this%ts,this%U,ierr);
-    CHKERRA(ierr);
+      call TSSetSolution(this%ts,this%U,ierr);
+      CHKERRA(ierr);
 
-    call TSSetMaxSteps(this%ts,10,ierr);
-    CHKERRA(ierr);
+      call TSSetMaxSteps(this%ts,10,ierr);
+      CHKERRA(ierr);
 
-    call TSSetMaxTime(this%ts,1800.d0,ierr);
-    CHKERRA(ierr);
+      call TSSetMaxTime(this%ts,1800.d0,ierr);
+      CHKERRA(ierr);
 
-    call TSSetExactFinalTime(this%ts,TS_EXACTFINALTIME_STEPOVER,ierr);
-    CHKERRA(ierr);
+      call TSSetExactFinalTime(this%ts,TS_EXACTFINALTIME_STEPOVER,ierr);
+      CHKERRA(ierr);
 
-    call TSSetFromOptions(this%ts,ierr);
-    CHKERRA(ierr);
+      call TSSetFromOptions(this%ts,ierr);
+      CHKERRA(ierr);
 
-    call TSSetUp(this%ts,ierr);
-    CHKERRA(ierr);
+      call TSSetUp(this%ts,ierr);
+      CHKERRA(ierr);
+
+    case (tdycore_solver_snes)
+      call SNESCreate(PETSC_COMM_WORLD,this%snes,ierr);
+      CHKERRA(ierr);
+
+      call TDySetSNESFunction(this%snes,this%tdy,ierr);
+      CHKERRA(ierr);
+
+      call TDySetSNESJacobian(this%snes,this%tdy,ierr);
+      CHKERRA(ierr);
+
+      call SNESSetFromOptions(this%snes,ierr);
+      CHKERRA(ierr);
+
+      call TDySetInitialSolutionForSNESSolver(this%tdy,this%U,ierr);
+      CHKERRA(ierr);
+
+    case default
+      call endrun('ERROR: TDycore solver setup only ts or snes' )
+
+    end select
 
     ! ==========================================================================
 
@@ -1165,7 +1211,7 @@ contains
             bounds_clump)
 
     case default
-       write(iulog,*)'EM_FATES_Solve: Unknown em_stage.'
+       write(iulog,*)'EM_TDycore_Solve: Unknown em_stage = ' ,em_stage
        call endrun(msg=errMsg(__FILE__, __LINE__))
     end select
 
@@ -1468,6 +1514,7 @@ contains
     integer :: ngridcells, nvalues
     integer, pointer :: index(:)
     PetscReal, pointer :: liquid_mass(:), mass_p(:), p_loc(:), qflx_p(:)
+    SNESConvergedReason :: snes_reason
 
     !-----------------------------------------------------------------------
 
@@ -1737,16 +1784,44 @@ contains
     do g = 1, ngridcells
        index(g) = g-1
     enddo
+    !qflx_p(:) = 0.d0
     call TDySetSourceSinkValuesLocal(this%tdy,ngridcells,index,qflx_p,ierr)
     call VecRestoreArrayF90(elm_tdycore_idata%qflx_tdycore_svec,qflx_p,ierr); CHKERRQ(ierr)
     deallocate(index)
 
-    call TSSetTime(this%ts,0.d0,ierr);CHKERRQ(ierr)
-    call TSSetTimeStep(this%ts,dt,ierr);CHKERRQ(ierr)
-    call TSSetMaxTime(this%ts,dt,ierr);
-    call TSSetStepNumber(this%ts,0,ierr);CHKERRQ(ierr)
-    call TSSetExactFinalTime(this%ts,TS_EXACTFINALTIME_MATCHSTEP,ierr);CHKERRQ(ierr)
-    call TSSolve(this%ts,this%U,ierr);
+    select case(this%tdycore_solver_type)
+    case (tdycore_solver_ts)
+      call TSSetTime(this%ts,0.d0,ierr);CHKERRQ(ierr)
+      call TSSetTimeStep(this%ts,dt,ierr);CHKERRQ(ierr)
+      call TSSetMaxTime(this%ts,dt,ierr);
+      call TSSetStepNumber(this%ts,0,ierr);CHKERRQ(ierr)
+      call TSSetExactFinalTime(this%ts,TS_EXACTFINALTIME_MATCHSTEP,ierr);CHKERRQ(ierr)
+      call TSSolve(this%ts,this%U,ierr);
+
+    case (tdycore_solver_snes)
+      dtime = 1800.0
+      call TDySetDtimeForSNESSolver(this%tdy,dtime,ierr);
+      CHKERRA(ierr);
+
+      call TDyPreSolveSNESSolver(this%tdy,ierr);
+      CHKERRA(ierr);
+
+      call SNESSolve(this%snes,PETSC_NULL_VEC,this%U,ierr);
+      CHKERRA(ierr);
+
+      call SNESGetConvergedReason(this%snes, snes_reason, ierr);CHKERRQ(ierr)
+      CHKERRA(ierr);
+      if (snes_reason<0) then
+         call endrun('ERROR: TDycore snes failed to converged' )
+      endif
+
+      call TDyPostSolveSNESSolver(this%tdy,this%U,ierr);
+      CHKERRA(ierr);
+
+
+    case default
+      call endrun('ERROR: TDycore solver solve only ts or snes' )
+    end select
 
     allocate(liquid_mass(ngridcells))
 
@@ -1768,6 +1843,7 @@ contains
 
     call VecGetArrayF90(elm_tdycore_idata%mass_elm_svec, mass_p, ierr); CHKERRQ(ierr)
 
+    abs_mass_error_col = 0.d0
     do fc = 1, l2e_num_hydrologyc
        c = l2e_filter_hydrologyc(fc)
        g = col_gridcell(c)
@@ -1814,7 +1890,7 @@ contains
 
     call VecRestoreArrayF90(elm_tdycore_idata%mass_elm_svec, mass_p, ierr); CHKERRQ(ierr)
 
-    !write(*,*)'abs_mass_error_col = ',abs_mass_error_col
+    write(*,*)'abs_mass_error_col = ',abs_mass_error_col
 
 
     deallocate(frac_ice                    )
