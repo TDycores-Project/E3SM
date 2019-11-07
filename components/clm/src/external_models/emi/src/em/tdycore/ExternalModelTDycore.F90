@@ -559,6 +559,9 @@ contains
 
     ! ==========================================================================
     ! Finish setup of TDycore
+    call TDySetWaterDensityType(this%tdy,WATER_DENSITY_EXPONENTIAL,ierr)
+    CHKERRA(ierr);
+
     call TDySetDiscretizationMethod(this%tdy,MPFA_O,ierr);
     CHKERRA(ierr);
 
@@ -567,7 +570,7 @@ contains
 
     call DMCreateGlobalVector(this%dm,this%U,ierr);
     CHKERRA(ierr);
-    call VecSet(this%U,71325.d0,ierr);
+    call VecSet(this%U,91325.d0,ierr);
     CHKERRA(ierr);
 
     select case(this%tdycore_solver_type)
