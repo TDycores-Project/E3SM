@@ -1117,8 +1117,8 @@ contains
     map%elm_nlevsoi     = nlevsoi
     map%elm_nlevgrnd    = nlevgrnd
     map%elm_nlev_mapped = elm_tdycore_idata%nzelm_mapped
-    map%tdy_nlev        = elm_tdycore_idata%nlelm_sub
-    map%tdy_nlev_mapped = elm_tdycore_idata%nlelm_sub
+    map%tdy_nlev        = nlevgrnd
+    map%tdy_nlev_mapped = nlevgrnd
 
     ! call MappingReadTxtFile(map, map%filename)
     call MappingSetupIdentityMap(map, elm_tdycore_idata%nlelm_srf)
@@ -1176,7 +1176,7 @@ contains
 
     !
     elm_tdycore_idata%nzelm_mapped = nlevgrnd
-    elm_tdycore_idata%nlelm_srf    = bounds%endg-bounds%endg+1
+    elm_tdycore_idata%nlelm_srf    = bounds%endg-bounds%begg+1
 
     elm_tdycore_idata%nlelm_sub    = elm_tdycore_idata%nlelm_srf * elm_tdycore_idata%nzelm_mapped
     elm_tdycore_idata%ngelm_sub    = elm_tdycore_idata%nlelm_sub
