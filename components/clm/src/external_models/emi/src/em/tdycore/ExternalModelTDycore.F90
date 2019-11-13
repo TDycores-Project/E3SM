@@ -536,6 +536,9 @@ contains
     PetscReal, pointer :: p_loc(:)
     PetscReal, pointer :: hksat_x(:), hksat_y(:), hksat_z(:), watsat(:), thetares(:)
     PetscErrorCode :: ierr
+    character(len=256) :: ic_filename
+    PetscBool :: ic_file_flg
+    PetscViewer :: viewer
 
     ! Create ELM-TDycore interface data
     call CreateELMTDycoreInterfaceData(this, bounds_clump)
@@ -568,10 +571,21 @@ contains
     call TDySetFromOptions(this%tdy,ierr);
     CHKERRA(ierr);
 
+    call PetscOptionsGetString(PETSC_NULL_OPTIONS,PETSC_NULL_CHARACTER,"-ic_filename", ic_filename, ic_file_flg,ierr);
+    CHKERRA(ierr);
+
     call DMCreateGlobalVector(this%dm,this%U,ierr);
     CHKERRA(ierr);
-    call VecSet(this%U,91325.d0,ierr);
-    CHKERRA(ierr);
+    if (ic_file_flg) then
+       call PetscViewerBinaryOpen(PETSC_COMM_WORLD, ic_filename, FILE_MODE_READ, viewer, ierr); CHKERRQ(ierr)
+       call VecLoad(this%U, viewer, ierr); CHKERRQ(ierr)
+       call PetscViewerDestroy(viewer, ierr); CHKERRQ(ierr)
+    else
+       call VecSet(this%U,91325.d0,ierr);
+       CHKERRA(ierr);
+    endif
+       call VecSet(this%U,91325.d0,ierr);
+       CHKERRA(ierr);
 
     select case(this%tdycore_solver_type)
     case (tdycore_solver_ts)
@@ -1518,6 +1532,11 @@ contains
     integer, pointer :: index(:)
     PetscReal, pointer :: liquid_mass(:), mass_p(:), p_loc(:), qflx_p(:)
     SNESConvergedReason :: snes_reason
+    Vec :: liquid_sat_vec
+    PetscReal, pointer :: liquid_sat_p(:), liquid_sat(:)
+    PetscViewer :: viewer
+    character(len=256) :: string
+
 
     !-----------------------------------------------------------------------
 
@@ -1894,6 +1913,32 @@ contains
     call VecRestoreArrayF90(elm_tdycore_idata%mass_elm_svec, mass_p, ierr); CHKERRQ(ierr)
 
     write(*,*)'abs_mass_error_col = ',abs_mass_error_col
+
+    allocate(liquid_sat((bounds_clump%endg-bounds_clump%begg+1)*nlevgrnd))
+    call TDyGetSaturationValuesLocal(this%tdy,nvalues,liquid_sat,ierr)
+    CHKERRA(ierr);
+
+    call VecDuplicate(this%U,liquid_sat_vec,ierr);
+    CHKERRA(ierr);
+
+    call VecGetArrayF90(liquid_sat_vec,liquid_sat_p,ierr);
+    CHKERRA(ierr);
+    liquid_sat_p(:) = liquid_sat(:)
+    call VecRestoreArrayF90(liquid_sat_vec,liquid_sat_p,ierr);
+    CHKERRA(ierr);
+
+    write(string,*)nstep
+    string = 'liquid_saturation_' // trim(adjustl(string)) // '.bin'
+    call PetscViewerBinaryOpen(PETSC_COMM_WORLD, trim(string), FILE_MODE_WRITE, viewer, ierr);
+    CHKERRA(ierr);
+    call VecView(liquid_sat_vec, viewer, ierr);
+    CHKERRA(ierr);
+    call PetscViewerDestroy(viewer, ierr);
+    CHKERRA(ierr);
+
+    call VecDestroy(liquid_sat_vec,ierr);
+    CHKERRA(ierr);
+    deallocate(liquid_sat)
 
 
     deallocate(frac_ice                    )
