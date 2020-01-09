@@ -687,10 +687,12 @@ sub write_filepath_cesmbld
                      "external_models/sbetr/src/Applications/soil-farm/CENT_ECACNP",
                      "external_models/tdycore/include",
                      "external_models/tdycore/src/",
+                     "external_models/tdycore/src/f90-mod",
+                     "external_models/tdycore/src/interface/ftn",
                      "external_models/tdycore/src/mesh",
                      "external_models/tdycore/src/mpfao",
-                     "external_models/tdycore/src/interface/ftn",
-                     "external_models/tdycore/src/f90-mod",
+                     "external_models/tdycore/src/mpfao/2D",
+                     "external_models/tdycore/src/mpfao/3D",
 		     "utils", 
 		     "cpl" );
 
