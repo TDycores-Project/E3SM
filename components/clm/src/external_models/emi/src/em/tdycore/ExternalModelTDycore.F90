@@ -123,6 +123,12 @@ module ExternalModelTDycore
      SNES :: snes
      Vec :: U
      PetscInt :: tdycore_solver_type
+    character(len=4096)    :: e2t_imap_filename
+    character(len=4096)    :: e2t_jmap_filename
+    character(len=4096)    :: e2t_wmap_filename
+    character(len=4096)    :: t2e_imap_filename
+    character(len=4096)    :: t2e_jmap_filename
+    character(len=4096)    :: t2e_wmap_filename
 #endif
     type(mapping_type), pointer :: map_elm_sub_to_tdy_sub
     type(mapping_type), pointer :: map_tdy_sub_to_elm_sub
@@ -466,6 +472,9 @@ contains
     PetscInt               :: dim, faces(3)
     PetscReal              :: lower(3), upper(3)
     character(len=256)     :: solver_type
+    PetscObject            :: field
+    PetscInt               :: num_fields
+    PetscFE                :: fe
 
     allocate(this%tdy)
 
@@ -492,6 +501,8 @@ contains
        !call endrun(msg='ERROR EM_TDycore_PreInit: '//&
        !   'Need to specify a mesh file for TDycore via runtime option -tdy_mesh_filename')
        faces(1) = bounds%endg-bounds%begg+1;
+       faces(1) = 100;
+       faces(1) = 3;
        faces(2) = 1;
        faces(3) = nlevgrnd;
        lower(:) = 0.d0;
@@ -505,12 +516,57 @@ contains
        call DMPlexCreateFromFile(PETSC_COMM_WORLD, mesh_filename, PETSC_TRUE, this%dm, ierr); CHKERRQ(ierr);
     endif
     
-    call DMSetFromOptions(this%dm, ierr); CHKERRA(ierr);
+    call PetscOptionsGetString(PETSC_NULL_OPTIONS,PETSC_NULL_CHARACTER, &
+         "-e2t_imap",this%e2t_imap_filename,flg,ierr);CHKERRQ(ierr)
+    if (.not.flg) then
+        call endrun('ERROR: No ELM-to-TDycore IMap file specified by -e2t_imap' )
+    endif
+
+    call PetscOptionsGetString(PETSC_NULL_OPTIONS,PETSC_NULL_CHARACTER, &
+         "-e2t_jmap",this%e2t_jmap_filename,flg,ierr);CHKERRQ(ierr)
+    if (.not.flg) then
+        call endrun('ERROR: No ELM-to-TDycore JMap file specified by -e2t_jmap' )
+    endif
+
+    call PetscOptionsGetString(PETSC_NULL_OPTIONS,PETSC_NULL_CHARACTER, &
+         "-e2t_wmap",this%e2t_wmap_filename,flg,ierr);CHKERRQ(ierr)
+    if (.not.flg) then
+        call endrun('ERROR: No ELM-to-TDycore WMap file specified by -e2t_wmap' )
+    endif
+
+    call PetscOptionsGetString(PETSC_NULL_OPTIONS,PETSC_NULL_CHARACTER, &
+         "-t2e_imap",this%t2e_imap_filename,flg,ierr);CHKERRQ(ierr)
+    if (.not.flg) then
+        call endrun('ERROR: No TDycore-to-ELM IMap file specified by -t2e_imap' )
+    endif
+
+    call PetscOptionsGetString(PETSC_NULL_OPTIONS,PETSC_NULL_CHARACTER, &
+         "-t2e_jmap",this%t2e_jmap_filename,flg,ierr);CHKERRQ(ierr)
+    if (.not.flg) then
+        call endrun('ERROR: No TDycore-to-ELM JMap file specified by -t2e_jmap' )
+    endif
+
+    call PetscOptionsGetString(PETSC_NULL_OPTIONS,PETSC_NULL_CHARACTER, &
+         "-t2e_wmap",this%t2e_wmap_filename,flg,ierr);CHKERRQ(ierr)
+    if (.not.flg) then
+        call endrun('ERROR: No TDycore-to-ELM WMap file specified by -t2e_wmap' )
+    endif
+
+    call DMGetDimension(this%dm, dim, ierr); CHKERRQ(ierr);
+    call PetscFECreateDefault(PETSC_COMM_SELF, dim, 1, PETSC_FALSE, "p_", -1, fe, ierr); CHKERRQ(ierr);
+    call PetscObjectSetName(fe, "p", ierr); CHKERRQ(ierr);
+    call DMSetField(this%dm, 0, PETSC_NULL_DMLABEL, fe, ierr); CHKERRQ(ierr);
+    call DMCreateDS(this%dm, ierr); CHKERRQ(ierr);
+    call PetscFEDestroy(fe, ierr); CHKERRQ(ierr);
+
+    call DMSetUseNatural(this%dm, PETSC_TRUE,ierr); CHKERRQ(ierr);
     call DMPlexDistribute(this%dm, 1, PETSC_NULL_SF, dmDist, ierr);CHKERRA(ierr);
     if (dmDist /= PETSC_NULL_DM) then
        call DMDestroy(this%dm, ierr);CHKERRA(ierr);
        this%dm = dmDist;
     end if
+    call DMSetBasicAdjacency(this%dm, PETSC_TRUE, PETSC_TRUE, ierr);CHKERRQ(ierr);
+    call DMSetFromOptions(this%dm, ierr); CHKERRA(ierr);
     call DMView(this%dm,PETSC_VIEWER_STDOUT_WORLD,ierr); CHKERRA(ierr)
 
     call TDyCreate(this%dm, this%tdy, ierr);
@@ -519,7 +575,28 @@ contains
   end subroutine EM_TDycore_PreInit
 
   !------------------------------------------------------------------------
+  subroutine LoadMappingVector(filename,map_vec)
+
+    implicit none
+
+    character(len=4096) :: filename
+    Vec :: map_vec
+
+    PetscViewer :: viewer
+    PetscErrorCode :: ierr
+
+    call VecCreate(PETSC_COMM_WORLD,map_vec,ierr); CHKERRA(ierr)
+    call PetscViewerBinaryOpen(PETSC_COMM_WORLD,trim(filename),FILE_MODE_READ,viewer,ierr);CHKERRA(ierr)
+    call VecLoad(map_vec,viewer,ierr);CHKERRA(ierr)
+    call PetscViewerDestroy(viewer,ierr);
+
+  end subroutine LoadMappingVector
+
+  !------------------------------------------------------------------------
   subroutine EM_TDycore_Init(this, l2e_init_list, e2l_init_list, iam, bounds_clump)
+    !
+    use clm_varpar , only : nlevgrnd
+    use decompMod  , only : ldecomp
     !
     implicit none
     !
@@ -532,33 +609,20 @@ contains
     ! LOCAL VARAIBLES:
     integer :: clm_npts
     integer :: clm_surf_npts
-    PetscInt g, j, count, ngridcells
+    PetscInt g, j, count, tdy_NumAllCells
     PetscReal, pointer :: p_loc(:)
     PetscReal, pointer :: hksat_x(:), hksat_y(:), hksat_z(:), watsat(:), thetares(:)
     PetscErrorCode :: ierr
     character(len=256) :: ic_filename
     PetscBool :: ic_file_flg
     PetscViewer :: viewer
-
-    ! Create ELM-TDycore interface data
-    call CreateELMTDycoreInterfaceData(this, bounds_clump)
-    
-    ! ==========================================================================
-    ! Create maps
-    nullify(this%map_elm_sub_to_tdy_sub)
-    nullify(this%map_tdy_sub_to_elm_sub)
-
-    this%map_elm_sub_to_tdy_sub => MappingCreate()
-    this%map_tdy_sub_to_elm_sub => MappingCreate()
-
-    call InitializeMap(this, this%map_elm_sub_to_tdy_sub)
-    call InitializeMap(this, this%map_tdy_sub_to_elm_sub)
-    ! ==========================================================================
-
-    ! ==========================================================================
-    ! Set material properties
-    call InitializationData_ELM2TDycore(this)
-    ! ==========================================================================
+    PetscInt :: nvalues
+    PetscInt :: elm_NumLocalCells, elm_NumGhostCells
+    PetscInt :: tdy_NumLocalCells, tdy_NumGhostCells
+    PetscInt, pointer :: elm_NatIdLocalCell(:), elm_NatIdAllCell(:), elm_IsCellLocal(:)
+    PetscInt, pointer :: tdy_NatIdLocalCell(:), tdy_NatIdAllCell(:), tdy_IsCellLocal(:)
+    Vec :: e2t_i,e2t_j,e2t_w
+    Vec :: t2e_i,t2e_j,t2e_w
 
     ! ==========================================================================
     ! Finish setup of TDycore
@@ -568,8 +632,81 @@ contains
     call TDySetDiscretizationMethod(this%tdy,MPFA_O,ierr);
     CHKERRA(ierr);
 
+    ! ==========================================================================
+    ! Get information about num. of all cells, natural IDs of all cells, and
+    ! identifier if the cell is local or ghost for TDycore
+    call TDyGetNumCellsLocal(this%tdy,tdy_NumAllCells,ierr)
+    allocate(tdy_IsCellLocal(tdy_NumAllCells))
+    allocate(tdy_NatIdAllCell(tdy_NumAllCells))
+    call TDyGetCellNaturalIDsLocal(this%tdy,nvalues,tdy_NatIdAllCell,ierr);
+    CHKERRA(ierr);
+    call TDyGetCellIsLocal(this%tdy,nvalues,tdy_IsCellLocal,ierr);
+    CHKERRA(ierr);
+
+    tdy_NumLocalCells = 0
+    do g = 1, tdy_NumAllCells
+       if (tdy_IsCellLocal(g) == 1) then
+          tdy_NumLocalCells = tdy_NumLocalCells + 1
+       end if
+    enddo
+    allocate(tdy_NatIdLocalCell(tdy_NumLocalCells))
+    tdy_NumLocalCells = 0
+    do g = 1, tdy_NumAllCells
+       if (tdy_IsCellLocal(g) == 1) then
+          tdy_NumLocalCells = tdy_NumLocalCells + 1
+          tdy_NatIdLocalCell(tdy_NumLocalCells) = tdy_NatIdAllCell(g)
+       end if
+    enddo
+
+    tdy_NumGhostCells = tdy_NumAllCells - tdy_NumLocalCells
+
+    elm_NumLocalCells = (bounds_clump%endg-bounds_clump%begg + 1)*nlevgrnd
+    elm_NumGhostCells = 0
+    allocate(elm_NatIdLocalCell(elm_NumLocalCells))
+    allocate(elm_NatIdAllCell(elm_NumLocalCells))
+    allocate(elm_IsCellLocal(elm_NumLocalCells))
+    do g = bounds_clump%begg, bounds_clump%endg
+       do j = 1, nlevgrnd
+          elm_NatIdLocalCell((g-bounds_clump%begg)*nlevgrnd + j) = (ldecomp%gdc2glo(g)-1)*nlevgrnd + j - 1
+          elm_NatIdAllCell((g-bounds_clump%begg)*nlevgrnd + j) = (ldecomp%gdc2glo(g)-1)*nlevgrnd + j - 1
+          elm_IsCellLocal((g-bounds_clump%begg)*nlevgrnd + j) = 1
+       enddo
+    enddo
+
+    ! Create ELM-TDycore interface data
+    call CreateELMTDycoreInterfaceData(this, bounds_clump, tdy_NumLocalCells, tdy_NumAllCells)
+
+    ! ==========================================================================
+    ! Create maps
+    call LoadMappingVector(this%e2t_imap_filename,e2t_i)
+    call LoadMappingVector(this%e2t_jmap_filename,e2t_j)
+    call LoadMappingVector(this%e2t_wmap_filename,e2t_w)
+
+    call LoadMappingVector(this%t2e_imap_filename,t2e_i)
+    call LoadMappingVector(this%t2e_jmap_filename,t2e_j)
+    call LoadMappingVector(this%t2e_wmap_filename,t2e_w)
+
+    nullify(this%map_elm_sub_to_tdy_sub)
+    nullify(this%map_tdy_sub_to_elm_sub)
+
+    this%map_elm_sub_to_tdy_sub => MappingCreate()
+    this%map_tdy_sub_to_elm_sub => MappingCreate()
+
+    call InitializeMap(this, this%map_elm_sub_to_tdy_sub, elm_NumLocalCells, elm_NatIdLocalCell, &
+      tdy_NumLocalCells, tdy_NumGhostCells, tdy_NatIdAllCell, tdy_IsCellLocal, e2t_i, e2t_j, e2t_w)
+
+    call InitializeMap(this, this%map_tdy_sub_to_elm_sub, tdy_NumLocalCells, tdy_NatIdLocalCell, &
+      elm_NumLocalCells, elm_NumGhostCells, elm_NatIdAllCell, elm_IsCellLocal, t2e_i, t2e_j, t2e_w)
+
+    ! ==========================================================================
+    ! Set material properties
+    call InitializationData_ELM2TDycore(this)
+
+    ! ==========================================================================
     call TDySetFromOptions(this%tdy,ierr);
     CHKERRA(ierr);
+
+    ! ==========================================================================
 
     call PetscOptionsGetString(PETSC_NULL_OPTIONS,PETSC_NULL_CHARACTER,"-ic_filename", ic_filename, ic_file_flg,ierr);
     CHKERRA(ierr);
@@ -701,7 +838,7 @@ contains
     PetscErrorCode :: ierr
     character(len= 128)   :: subname = 'PackInitializationData_TDycore2ELM'
 
-    call VecGetSize(elm_tdycore_idata%hksat_x_tdycore_svec,ngridcells,ierr);
+    call VecGetLocalSize(elm_tdycore_idata%mass_tdycore_mvec,ngridcells,ierr)
     CHKERRA(ierr);
 
     allocate(liquid_sat(ngridcells))
@@ -731,6 +868,8 @@ contains
 
     if (ngridcells /= nvalues) then
       write(iulog,*)'Number of local grid cells in TDycore does not match the grid cells in the map'
+      write(*,*)'ngridcells = ',ngridcells
+      write(*,*)'nvalues    = ',nvalues
       call endrun( trim(subname)//' ERROR: Land Unit type not supported' )
     endif
 
@@ -1025,6 +1164,7 @@ contains
 
     implicit none
     class(em_tdycore_type)  , intent(inout) :: this
+    PetscErrorCode :: ierr
 
     call MappingSourceToDestination(this%map_elm_sub_to_tdy_sub, &
         elm_tdycore_idata%hksat_x_elm_mvec, &
@@ -1114,7 +1254,9 @@ contains
 
 
   !-----------------------------------------------------------------------
-  subroutine InitializeMap(this, map)
+  subroutine InitializeMap(this, map, s_NumLocalCells, s_NatIdLocalCell, &
+    d_NumLocalCells, d_NumGhostCells, d_NatIdAllCell, d_IsCellLocal, &
+    i_vec, j_vec, w_vec)
 
     use spmdMod, only : mpicom, iam
     use clm_varpar                    , only : nlevsoi, nlevgrnd
@@ -1124,9 +1266,11 @@ contains
     ! !ARGUMENTS:
     class(em_tdycore_type)  , intent(inout) :: this
     type(mapping_type), pointer :: map
+    PetscInt :: s_NumLocalCells, d_NumLocalCells, d_NumGhostCells
+    PetscInt, pointer :: s_NatIdLocalCell(:), d_NatIdAllCell(:), d_IsCellLocal(:)
 
-    PetscInt :: g, s_npts_local, d_npts_local, d_npts_ghost
-    PetscInt, pointer :: s_cell_ids_nindex(:), d_cell_ids_nindex(:), d_is_local(:)
+    Vec :: i_vec, j_vec, w_vec
+    PetscErrorCode :: ierr
 
     map%elm_nlevsoi     = nlevsoi
     map%elm_nlevgrnd    = nlevgrnd
@@ -1135,41 +1279,21 @@ contains
     map%tdy_nlev_mapped = nlevgrnd
 
     ! call MappingReadTxtFile(map, map%filename)
-    call MappingSetupIdentityMap(map, elm_tdycore_idata%nlelm_srf)
+    call MappingSetupIdentityMapFromVec(map, i_vec, j_vec, w_vec)
 
-    s_npts_local = elm_tdycore_idata%nzelm_mapped * elm_tdycore_idata%nlelm_srf
-
-    allocate(s_cell_ids_nindex(s_npts_local))
-    do g = 1, s_npts_local
-      s_cell_ids_nindex(g) = g - 1
-    enddo
-
-    d_npts_local = s_npts_local
-    d_npts_ghost = 0
-    allocate(d_cell_ids_nindex(d_npts_local))
-    allocate(d_is_local(d_npts_local))
-    do g = 1, d_npts_local
-      d_cell_ids_nindex(g) = g - 1
-      d_is_local(g) = 1
-    enddo
-
-    call MappingSetSourceMeshCellIds(map, s_npts_local, s_cell_ids_nindex)
-    call MappingSetDestinationMeshCellIds(map, d_npts_local, d_npts_ghost, &
-          d_cell_ids_nindex, d_is_local)
+    call MappingSetSourceMeshCellIds(map, s_NumLocalCells, s_NatIdLocalCell)
+    call MappingSetDestinationMeshCellIds(map, d_NumLocalCells, d_NumGhostCells, &
+          d_NatIdAllCell, d_IsCellLocal)
 
     call MappingDecompose(map, mpicom)
     call MappingFindDistinctSourceMeshCellIds(map)
     call MappingCreateWeightMatrix(map, iam)
     call MappingCreateScatterOfSourceMesh(map, mpicom)
 
-    deallocate(s_cell_ids_nindex)
-    deallocate(d_cell_ids_nindex)
-    deallocate(d_is_local)
-
   end subroutine InitializeMap
 
   !-----------------------------------------------------------------------
-  subroutine CreateELMTDycoreInterfaceData(this, bounds)
+  subroutine CreateELMTDycoreInterfaceData(this, bounds, nltdy_sub, ngtdy_sub)
     !
     ! !DESCRIPTION:
     ! Allocates memory for CLM-PFLOTRAN interface
@@ -1184,6 +1308,7 @@ contains
     ! !ARGUMENTS:
     class(em_tdycore_type)  , intent(inout) :: this
     type(bounds_type)       , intent(in)    :: bounds
+    PetscInt                , intent(in)    :: nltdy_sub, ngtdy_sub
 
     ! Initialize PETSc vector for data transfer between ELM and TDycore
     call ELMTDycore_InterfaceData_Init()
@@ -1195,8 +1320,8 @@ contains
     elm_tdycore_idata%nlelm_sub    = elm_tdycore_idata%nlelm_srf * elm_tdycore_idata%nzelm_mapped
     elm_tdycore_idata%ngelm_sub    = elm_tdycore_idata%nlelm_sub
 
-    elm_tdycore_idata%nltdy_sub    = elm_tdycore_idata%nlelm_sub
-    elm_tdycore_idata%ngtdy_sub    = elm_tdycore_idata%nlelm_sub
+    elm_tdycore_idata%nltdy_sub    = nltdy_sub
+    elm_tdycore_idata%ngtdy_sub    = ngtdy_sub
 
     ! Allocate vectors for data transfer between CLM and PFLOTRAN.
     call ELMTDycore_InterfaceData_CreateVectors(MPI_COMM_WORLD)
