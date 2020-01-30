@@ -99,7 +99,7 @@ module Mapping_module
             MappingSetSourceMeshCellIds, &
             MappingSetDestinationMeshCellIds, &
             MappingReadTxtFile, &
-            MappingSetupIdentityMap, &
+            MappingSetupIdentityMapFromVec, &
             MappingDecompose, &
             MappingFindDistinctSourceMeshCellIds, &
             MappingCreateWeightMatrix, &
@@ -492,39 +492,39 @@ contains
   end subroutine MappingReadTxtFile
 
 ! ************************************************************************** !
-
-  subroutine MappingSetupIdentityMap(map,ngridcells)!,option)
+  subroutine MappingSetupIdentityMapFromVec(map,icsr_vec,jcsr_vec,wts_vec)
 
     implicit none
 
     ! argument
     type(mapping_type), pointer :: map
-    PetscInt :: ngridcells
-    PetscInt :: g,j,count
+    Vec :: icsr_vec,jcsr_vec,wts_vec
 
-    if (map%tdy_nlev_mapped /= map%elm_nlevgrnd) then
-       write(*,*)'MappingSetupIdentityMap: Requires number of levels mapped between ' // &
-          'ELM and TDycore to be same'
-       stop
-    endif
+    PetscScalar, pointer :: icsr_p(:),jcsr_p(:),wts_p(:)
+    PetscInt :: i, size
+    PetscErrorCode :: ierr
 
-    map%s2d_nwts = ngridcells * map%tdy_nlev_mapped
+    call VecGetLocalSize(icsr_vec,size,ierr); CHKERRA(ierr)
+    map%s2d_nwts = size
     allocate(map%s2d_icsr(map%s2d_nwts))
     allocate(map%s2d_jcsr(map%s2d_nwts))
     allocate(map%s2d_wts(map%s2d_nwts))
 
-    count = 0
-    do g = 1,ngridcells
-      do j = 1,map%tdy_nlev_mapped
-        count = count + 1
-        map%s2d_icsr(count) = count - 1
-        map%s2d_jcsr(count) = g*map%tdy_nlev_mapped - j
-        map%s2d_wts(count) = 1.d0
-      enddo
+    call VecGetArrayF90(icsr_vec,icsr_p,ierr); CHKERRA(ierr)
+    call VecGetArrayF90(jcsr_vec,jcsr_p,ierr); CHKERRA(ierr)
+    call VecGetArrayF90(wts_vec,wts_p,ierr); CHKERRA(ierr)
+
+    do i = 1,size
+       map%s2d_icsr(i) = INT(icsr_p(i))
+       map%s2d_jcsr(i) = INT(jcsr_p(i))
+       map%s2d_wts(i)  = wts_p(i)
     enddo
 
-  end subroutine MappingSetupIdentityMap
+    call VecRestoreArrayF90(icsr_vec,icsr_p,ierr); CHKERRA(ierr)
+    call VecRestoreArrayF90(jcsr_vec,jcsr_p,ierr); CHKERRA(ierr)
+    call VecRestoreArrayF90(wts_vec,wts_p,ierr); CHKERRA(ierr)
 
+  end subroutine MappingSetupIdentityMapFromVec
 ! ************************************************************************** !
 
   subroutine MappingDecompose(map,mycomm)
@@ -832,7 +832,7 @@ contains
     call VecDestroy(cumsum_nonzero_row_count_vec,ierr)
     call VecDestroy(nonzero_row_count_loc_vec,ierr)
     call VecDestroy(cumsum_nonzero_row_count_loc_vec,ierr)
-    
+
   end subroutine MappingDecompose
 
 ! ************************************************************************** !
@@ -1270,8 +1270,8 @@ contains
     
     ! local variables
     PetscErrorCode              :: ierr
-    
-    if (map%s2d_s_ncells > 0) then  
+
+    if (map%s2d_s_ncells > 0) then
        ! Initialize local vector
        call VecSet(map%s_disloc_vec, 0.d0, ierr)
     end if
@@ -1282,7 +1282,7 @@ contains
     call VecScatterEnd(map%s2d_scat_s_gb2disloc, s_vec, map%s_disloc_vec, &
          INSERT_VALUES, SCATTER_FORWARD, ierr)
     
-    if (map%s2d_s_ncells > 0) then  
+    if (map%s2d_s_ncells > 0) then
        ! Perform Matrix-Vector product
        call MatMult(map%wts_mat, map%s_disloc_vec, d_vec, ierr)
     end if
