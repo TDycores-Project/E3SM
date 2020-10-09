@@ -12,8 +12,8 @@ module ExternalModelInterfaceMod
   use clm_varctl                            , only : iulog
   use EMI_DataMod                           , only : emi_data_list, emi_data
   use EMI_DataDimensionMod                  , only : emi_data_dimension_list_type
-  use ExternalModelTDycore                  , only : em_tdycore_type
 #ifdef USE_PETSC_LIB
+  use ExternalModelTDycore                  , only : em_tdycore_type
   use ExternalModelVSFMMod                  , only : em_vsfm_type
   use ExternalModelPTMMod                   , only : em_ptm_type
 #endif
@@ -56,8 +56,8 @@ module ExternalModelInterfaceMod
   class(emi_data_list)               , pointer :: l2e_driver_list(:)
   class(emi_data_list)               , pointer :: e2l_driver_list(:)
   class(emi_data_dimension_list_type), pointer :: emid_dim_list
-  class(em_tdycore_type)             , pointer :: em_tdycore
 #ifdef USE_PETSC_LIB
+  class(em_tdycore_type)             , pointer :: em_tdycore
   class(em_vsfm_type)                , pointer :: em_vsfm(:)
   class(em_ptm_type)                 , pointer :: em_ptm(:)
 #endif
@@ -602,9 +602,11 @@ contains
        enddo
 
     case (EM_ID_TDYCORE)
-       write(*,*)'call EMI_Init_TDycore()'
+#ifdef USE_PETSC_LIB
        call EMI_Init_TDycore()
-       write(*,*)'call EMI_Init_TDycore() done'
+#else
+       call endrun('TDycore is on but code was not compiled with -DUSE_PETSC_LIB')
+#endif
 
     case default
        call endrun('Unknown External Model')
