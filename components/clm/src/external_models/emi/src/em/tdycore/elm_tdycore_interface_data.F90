@@ -1,5 +1,7 @@
 module elm_tdycore_interface_data
 
+#ifdef USE_PETSC_LIB
+
 #include "petsc/finclude/petscsys.h"
 #include "petsc/finclude/petscvec.h"
   use petscsys
@@ -422,4 +424,5 @@ contains
 
   end subroutine ELMTDycore_InterfaceData_Deallocate
 
+#endif
 end module elm_tdycore_interface_data
