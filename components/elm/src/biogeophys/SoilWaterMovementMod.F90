@@ -54,6 +54,7 @@ contains
     ! GB-FIX-ME: The call to control_spmd() [in subroutine control_init()] before
     !            call to init_hydrology() would avoid the mpi broadcast
     call mpi_bcast (use_vsfm, 1, MPI_LOGICAL, 0, mpicom, ier)
+    call mpi_bcast (use_tdycore, 1, MPI_LOGICAL, 0, mpicom, ier)
     if (use_vsfm) soilroot_water_method = vsfm
     if (use_tdycore) soilroot_water_method = tdycore
 
@@ -76,7 +77,7 @@ contains
     ! select one subroutine to do the soil and root water coupling
     !
     !USES
-    use elm_varctl                 , only : use_betr
+    use elm_varctl                 , only : use_betr, use_tdycore
     use elm_varctl                 , only : use_var_soil_thick
     use shr_kind_mod               , only : r8 => shr_kind_r8
     use elm_varpar                 , only : nlevsoi    
