@@ -1,5 +1,7 @@
 module ExternalModelTDycore
 
+#ifdef USE_PETSC_LIB
+
 #include "petsc/finclude/petscsys.h"
 #include "petsc/finclude/petsc.h"
 #include "petsc/finclude/petscdm.h"
@@ -1656,6 +1658,7 @@ contains
     integer :: ngridcells, nvalues
     integer, pointer :: index(:)
     PetscReal, pointer :: liquid_mass(:), mass_p(:), p_loc(:), qflx_p(:)
+    TSConvergedReason :: ts_reason
     SNESConvergedReason :: snes_reason
     Vec :: liquid_sat_vec
     PetscReal, pointer :: liquid_sat_p(:), liquid_sat(:)
@@ -1938,12 +1941,16 @@ contains
 
     select case(this%tdycore_solver_type)
     case (tdycore_solver_ts)
-      call TSSetTime(this%ts,0.d0,ierr);CHKERRQ(ierr)
-      call TSSetTimeStep(this%ts,dt,ierr);CHKERRQ(ierr)
-      call TSSetMaxTime(this%ts,dt,ierr);
-      call TSSetStepNumber(this%ts,0,ierr);CHKERRQ(ierr)
-      call TSSetExactFinalTime(this%ts,TS_EXACTFINALTIME_MATCHSTEP,ierr);CHKERRQ(ierr)
-      call TSSolve(this%ts,this%U,ierr);
+      call TSSetTime(this%ts,0.d0,ierr);CHKERRA(ierr);
+      call TSSetTimeStep(this%ts,dt,ierr);CHKERRA(ierr);
+      call TSSetMaxTime(this%ts,dt,ierr);CHKERRA(ierr);
+      call TSSetStepNumber(this%ts,0,ierr);CHKERRA(ierr);
+      call TSSetExactFinalTime(this%ts,TS_EXACTFINALTIME_MATCHSTEP,ierr);CHKERRA(ierr);
+      call TSSolve(this%ts,this%U,ierr);CHKERRA(ierr);
+      call TSGetConvergedReason(this%ts,ts_reason,ierr);CHKERRA(ierr)
+      if (ts_reason<0) then
+         call endrun('ERROR: TDycore snes failed to converged' )
+      endif
 
     case (tdycore_solver_snes)
       dtime = 1800.0
@@ -1956,7 +1963,7 @@ contains
       call SNESSolve(this%snes,PETSC_NULL_VEC,this%U,ierr);
       CHKERRA(ierr);
 
-      call SNESGetConvergedReason(this%snes, snes_reason, ierr);CHKERRQ(ierr)
+      call SNESGetConvergedReason(this%snes, snes_reason, ierr);
       CHKERRA(ierr);
       if (snes_reason<0) then
          call endrun('ERROR: TDycore snes failed to converged' )
@@ -2037,8 +2044,8 @@ contains
 
     call VecRestoreArrayF90(elm_tdycore_idata%mass_elm_svec, mass_p, ierr); CHKERRQ(ierr)
 
-    write(*,*)'abs_mass_error_col = ',abs_mass_error_col
 
+#if 0
     allocate(liquid_sat((bounds_clump%endg-bounds_clump%begg+1)*nlevgrnd))
     call TDyGetSaturationValuesLocal(this%tdy,nvalues,liquid_sat,ierr)
     CHKERRA(ierr);
@@ -2064,6 +2071,7 @@ contains
     call VecDestroy(liquid_sat_vec,ierr);
     CHKERRA(ierr);
     deallocate(liquid_sat)
+#endif
 
 
     deallocate(frac_ice                    )
@@ -2098,4 +2106,5 @@ contains
 
   end subroutine EM_TDycore_Solve_Soil_Hydro
 
+#endif
 end module ExternalModelTDycore
