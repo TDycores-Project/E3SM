@@ -1,6 +1,7 @@
 module Mapping_module
 
   !use PFLOTRAN_Constants_module
+#ifdef USE_PETSC_LIB
 
 #include "petsc/finclude/petscsys.h"
 #include "petsc/finclude/petscviewer.h"
@@ -1402,5 +1403,6 @@ recursive subroutine MappingDestroy(map)
 
   end subroutine MappingDestroy
 
+#endif
 end module Mapping_module
 
