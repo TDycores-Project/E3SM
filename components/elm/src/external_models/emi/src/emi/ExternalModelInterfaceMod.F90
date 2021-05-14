@@ -617,10 +617,10 @@ contains
   !-----------------------------------------------------------------------
   subroutine EMI_Init_TDycore()
     !
-    use clm_instMod           , only : soilstate_vars
-    use clm_instMod           , only : soilhydrology_vars
-    use clm_instMod           , only : waterflux_vars
-    use clm_instMod           , only : waterstate_vars
+    use elm_instMod           , only : soilstate_vars
+    use elm_instMod           , only : soilhydrology_vars
+    use elm_instMod           , only : waterflux_vars
+    use elm_instMod           , only : waterstate_vars
     use decompMod             , only : get_clump_bounds
     use ColumnType            , only : col_pp
     use LandunitType          , only : lun_pp

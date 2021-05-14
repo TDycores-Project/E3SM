@@ -11,7 +11,7 @@ module ExternalModelTDycore
   use shr_kind_mod                 , only : r8 => shr_kind_r8
   use shr_log_mod                  , only : errMsg => shr_log_errMsg
   use EMI_DataMod                  , only : emi_data_list, emi_data
-  use clm_varctl                   , only : iulog
+  use elm_varctl                   , only : iulog
   use ExternalModelBaseType        , only : em_base_type
   use decompMod                    , only : bounds_type
   use ExternalModelConstants
@@ -461,7 +461,7 @@ contains
   subroutine EM_TDycore_PreInit(this,bounds)
     !
     use spmdMod     , only : mpicom
-    use clm_varpar  , only : nlevgrnd
+    use elm_varpar  , only : nlevgrnd
     !
     implicit none
     !
@@ -597,7 +597,7 @@ contains
   !------------------------------------------------------------------------
   subroutine EM_TDycore_Init(this, l2e_init_list, e2l_init_list, iam, bounds_clump)
     !
-    use clm_varpar , only : nlevgrnd
+    use elm_varpar , only : nlevgrnd
     use decompMod  , only : ldecomp
     !
     implicit none
@@ -958,8 +958,8 @@ contains
   subroutine UnpackInitializationData_TDycore2ELM(this,l2e_init_list, e2l_init_list, bounds_clump)
 
     use landunit_varcon           , only : istsoil
-    use clm_varcon                , only : denice, denh2o
-    use clm_varpar                , only : nlevgrnd
+    use elm_varcon                , only : denice, denh2o
+    use elm_varpar                , only : nlevgrnd
 
     implicit none
     class(em_tdycore_type)  , intent(inout) :: this
@@ -1261,7 +1261,7 @@ contains
     i_vec, j_vec, w_vec)
 
     use spmdMod, only : mpicom, iam
-    use clm_varpar                    , only : nlevsoi, nlevgrnd
+    use elm_varpar                    , only : nlevsoi, nlevgrnd
     !
     implicit none
 
@@ -1302,7 +1302,7 @@ contains
     !
     ! !USES:
     use decompMod                     , only : bounds_type
-    use clm_varpar                    , only : nlevsoi, nlevgrnd
+    use elm_varpar                    , only : nlevsoi, nlevgrnd
     use shr_kind_mod                  , only: r8 => shr_kind_r8
     !
     implicit none
@@ -1371,8 +1371,8 @@ contains
     use MultiPhysicsProbConstants , only : AUXVAR_INTERNAL
     use MultiPhysicsProbConstants , only : VAR_MASS
     use MultiPhysicsProbConstants , only : VAR_SOIL_MATRIX_POT
-    use clm_varcon                , only : denice, denh2o
-    use clm_varpar                , only : nlevgrnd
+    use elm_varcon                , only : denice, denh2o
+    use elm_varpar                , only : nlevgrnd
     !
     implicit none
     !
@@ -1526,7 +1526,7 @@ contains
     use MultiPhysicsProbConstants , only : AUXVAR_BC
     use MultiPhysicsProbConstants , only : AUXVAR_SS
     use mpp_varpar                , only : nlevgrnd
-    use clm_varcon                , only : denice, denh2o
+    use elm_varcon                , only : denice, denh2o
     use petscsnes
     !
     implicit none

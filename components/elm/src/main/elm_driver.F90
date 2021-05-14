@@ -11,11 +11,8 @@ module elm_driver
   use shr_kind_mod           , only : r8 => shr_kind_r8
   use shr_sys_mod            , only : shr_sys_flush
   use shr_log_mod            , only : errMsg => shr_log_errMsg
-<<<<<<< HEAD
-=======
   use elm_varctl             , only : use_tdycore
   use elm_varctl             , only : wrtdia, iulog, create_glacier_mec_landunit, use_fates
->>>>>>> Adds time-stepping of TDycore
   use elm_varpar             , only : nlevtrc_soil, nlevsoi
   use elm_varctl             , only : wrtdia, iulog, create_glacier_mec_landunit, use_fates, use_betr  
   use elm_varctl             , only : use_cn, use_lch4, use_voc, use_noio, use_c13, use_c14
