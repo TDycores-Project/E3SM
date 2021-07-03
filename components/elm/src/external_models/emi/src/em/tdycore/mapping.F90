@@ -1211,7 +1211,6 @@ contains
     ! Create vector scatter
     call VecScatterCreate(N2P, is_to, pindex_req, is_from, vscat, ierr)
     call ISDestroy(is_to,ierr)
-    call ISDestroy(is_from, ierr)
 #ifdef MAP_DEBUG
     call PetscViewerASCIIOpen(mycomm,'vscat.out',viewer,ierr)
     call VecScatterView(vscat,viewer,ierr)
@@ -1238,6 +1237,8 @@ contains
     call VecRestoreArrayF90(pindex_req,v_loc,ierr)
 
     call VecScatterCreate(N2P, is_to, pindex_req, is_from, map%s2d_scat_s_gb2disloc, ierr)
+    call ISDestroy(is_to, ierr)
+    call ISDestroy(is_from, ierr)
 #ifdef MAP_DEBUG
     call PetscViewerASCIIOpen(mycomm,'s2d_scat_s_gb2disloc.out',viewer,ierr)
     call VecScatterView(map%s2d_scat_s_gb2disloc,viewer,ierr)
