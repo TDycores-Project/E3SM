@@ -571,7 +571,10 @@ contains
     call DMSetFromOptions(this%dm, ierr); CHKERRA(ierr);
     call DMView(this%dm,PETSC_VIEWER_STDOUT_WORLD,ierr); CHKERRA(ierr)
 
-    call TDyCreate(this%dm, this%tdy, ierr);
+    call TDyCreate(this%tdy, ierr);
+    CHKERRA(ierr);
+
+    call TDySetDM(this%tdy, this%dm, ierr);
     CHKERRA(ierr);
 
   end subroutine EM_TDycore_PreInit
@@ -633,6 +636,16 @@ contains
 
     call TDySetDiscretizationMethod(this%tdy,MPFA_O,ierr);
     CHKERRA(ierr);
+
+    ! ==========================================================================
+    call TDySetFromOptions(this%tdy,ierr);
+    CHKERRA(ierr);
+
+    call TDySetupNumericalMethods(this%tdy,ierr);
+    CHKERRA(ierr);
+
+    call TDyCreateVectors(this%tdy,ierr); CHKERRA(ierr)
+    call TDyCreateJacobian(this%tdy,ierr); CHKERRA(ierr)
 
     ! ==========================================================================
     ! Get information about num. of all cells, natural IDs of all cells, and
@@ -705,10 +718,6 @@ contains
     call InitializationData_ELM2TDycore(this)
 
     ! ==========================================================================
-    call TDySetFromOptions(this%tdy,ierr);
-    CHKERRA(ierr);
-
-    ! ==========================================================================
 
     call PetscOptionsGetString(PETSC_NULL_OPTIONS,PETSC_NULL_CHARACTER,"-ic_filename", ic_filename, ic_file_flg,ierr);
     CHKERRA(ierr);
@@ -777,7 +786,7 @@ contains
       call SNESSetFromOptions(this%snes,ierr);
       CHKERRA(ierr);
 
-      call TDySetInitialSolutionForSNESSolver(this%tdy,this%U,ierr);
+      call TDySetInitialCondition(this%tdy,this%U,ierr);
       CHKERRA(ierr);
 
     case default
@@ -859,10 +868,10 @@ contains
     call TDyGetLiquidMassValuesLocal(this%tdy,nvalues,liquid_mass,ierr)
     CHKERRA(ierr);
 
-    call TDyGetMaterialPropertyMValuesLocal(this%tdy,nvalues,matprop_m,ierr)
+    call TDyGetCharacteristicCurveMValuesLocal(this%tdy,nvalues,matprop_m,ierr)
     CHKERRA(ierr);
 
-    call TDyGetMaterialPropertyAlphaValuesLocal(this%tdy,nvalues,matprop_alpha,ierr)
+    call TDyGetCharacteristicCurveAlphaValuesLocal(this%tdy,nvalues,matprop_alpha,ierr)
     CHKERRA(ierr);
 
     call TDyGetPorosityValuesLocal(this%tdy,nvalues,porosity,ierr)
