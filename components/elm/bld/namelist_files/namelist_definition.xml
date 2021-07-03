@@ -1759,7 +1759,7 @@ Specifies the method for decomposing CLM grids across processors.
 <!-- ========================================================================================  -->
 
 <entry id="use_tdycore" type="logical" category="default_settings"
-        group="clm_inparm" valid_values="">
+        group="elm_inparm" valid_values="">
 Runtime flag to turn on/off TDycore.
 </entry>
 
