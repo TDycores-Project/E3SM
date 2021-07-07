@@ -727,7 +727,6 @@ contains
     ! Initialize the external model
     call em_tdycore%Init(l2e_init_list(clump_rank), e2l_init_list(clump_rank), &
          iam, bounds_clump)
-    write(*,*)' em_tdycore%Init DONE'
 
     ! Build a column level filter on which TDycore is active.
     ! This new filter would be used during the initialization to

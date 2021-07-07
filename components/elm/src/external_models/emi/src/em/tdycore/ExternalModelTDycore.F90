@@ -717,6 +717,8 @@ contains
     ! Set material properties
     call InitializationData_ELM2TDycore(this)
 
+    call TDyComputeMPFAODiscretizationTerms(this%tdy, ierr);
+    CHKERRA(ierr);
     ! ==========================================================================
 
     call PetscOptionsGetString(PETSC_NULL_OPTIONS,PETSC_NULL_CHARACTER,"-ic_filename", ic_filename, ic_file_flg,ierr);
